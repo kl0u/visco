@@ -1,0 +1,144 @@
+These are notes on building and running Visco.
+
+First : to build the basics -> ant compile
+	to build the examples jar -> ant examples
+	todo -> read a bit the documentation of ant
+
+Code comments and thing to remember.
+
+8-9-2012 : for now Visco is broken. There are times that it works, but normally it does not.
+	PROBLEM with inconsistent progress report :each reduce has one reporter.
+
+9-9-2012 : what happens in the merging tree if the input comes from Disk ? 
+	   probably the reduce progress can go backwards when task rescheduling 
+	     takes place because of reduce node disconnection.   
+
+10-9-2012 : the BinaryInputReader detects the end of the stream but then the Receive() method 
+	     of the NetworkChannel is still called although is should not, thus leading to an 
+	     exception being raised. Normally this should never be called because it occupies 
+	     a thread even for a short period of time.
+
+	     LOGS : 
+		attempt_201209101514_0004_r_000009_0: Merging Task 2 : left input [0]
+		attempt_201209101514_0004_r_000009_0: Merging Task 3 : inputs [1, 2]
+		attempt_201209101514_0004_r_000009_0: Merging Task 4 : left input [3]
+		attempt_201209101514_0004_r_000009_0: Merging Task 5 : inputs [4, 5]
+		attempt_201209101514_0004_r_000009_0: Merging Task 7 : left input [6]
+		attempt_201209101514_0004_r_000009_0: Merging Task 8 : inputs [7, 8]
+		attempt_201209101514_0004_r_000009_0: Merging Task 9 : left input [9]
+		attempt_201209101514_0004_r_000009_0: Merging Task 10 : inputs [10, 11]
+		attempt_201209101514_0004_r_000009_0: # merge tasks: 11
+	     The inputs should be assigned to tasks differently .
+
+11-09-2012 : FIXED : The bug was in the Tree Builder and MergingTask. 
+             They unblock the task before assigning the channel 
+             to it. Also it was in the MergingTask (NoSuchElementException).
+
+             -> Still the combiner missing from the internal MergingTasks.
+             -> Checkpoint in case of failures.
+	     -> Check if the fix in the tree builder should be done differently
+                (with a callback) or it is ok for now. Also check if it is ok 
+                in the case that the queue gets full.
+
+             SHOULDN'T progress be called at the last merging task?
+	
+12-09-2012 : BUG : the final output seems to be smaller than expected. 
+	     Assuming that the MR is correctly applied, then there are some
+             records missing.
+
+	     BUG : also the validateJVM raises an exception in the 
+             taskTracker logs.
+             This I think it is again a concurrency bug. The JVM is 
+             killed and after that it tries to send a message thus 
+             leading to invalidate the message. So, see where the 
+             JVM is killed. 
+
+13-09-2012 : FIXED : the bug that was responsible for having an output smaller 
+             than expected. I had introduced it in the NetworkChannel code.
+             The problem was that I was loosing a record each time the buffer 
+             was filled with data.
+
+	     BUGS : I still have the JVM problem to solve and the reporting thing.
+		
+	     Test correctness so far. Test also with 2 waves of reducers.
+             HDFS_BYTES_READ=1142807394
+	     FILE_BYTES_WRITTEN=1149314658
+	     HDFS_BYTES_WRITTEN=1142805609
+
+17-09-2012 : BUG probably I still lose some records on the way.
+
+18-09-2012 : Fixed the JVM bug. At least there is not exception now. Although
+	     I have to check if all is going as it should. The problem was 
+             that we were not killing the getMapOutputEvent threads so they
+             were trying to send messages even after that task was over. Now 
+             that I know where the source is, I should check the code to see
+             if there are also other bugs.
+
+             Also we are killing now the thread after the whole task is over. 
+             I should probably do it as soon as we get the correct urls. It 
+	     depends if in case of failures the code uses the same threads or 
+             not. If not, then there is no reason to keep them alive.
+
+             Still remaining BUGS :
+			some records missing
+			progress reports
+	     
+19-09-2012 : The missing records do not seem to be missing. The lines in the
+             output are the same for both versions.
+             
+             BUG REMAINING : The thing that has to be fixed is the progress 
+	     reports and potentially the messages printed by the TaskTracker 
+	     in its log. I have to check them against the messages present 
+             in Diana's logs.
+
+             To this front, now I am also reporting the bytes written so that 
+             there are included in the report. The code to be added was on the
+             FinalOutputChannel. Still not sure about all the stat 
+             correctness and completeness but at least the output has the same
+             number of lines.
+
+	     
+             WORK THAT COULD BE DONE BY THE STUDENTS : run the code 1) test it
+             2) see how it compares to the original mapreduce 3) get used to 
+             Grid5000 4) add instrumentation like how much does each phase 
+             last.
+
+   	     WORK THAT SHOULD BE DONE BY ME : 1) integrate the combiner 
+	     2) investigate the node disconnection scenarios.
+
+20-09-2012 : The latency of the network can be that the BinaryInputReaders 
+             are attached to MergingTask threads. It can be that they are 
+             not ready to receive data all the time.
+
+             The difference seems more pronounced for more maps, i.e. more data
+             to be sent through the network.
+	
+             FOR TODAY : 
+	     Add the combiner at the internal merging tasks and retry with the 
+             WordCount example.
+
+	     NOTE IN THE MAPTASK CLASS :
+		// Note: we would like to avoid the combiner if we've fewer
+		// than some threshold of records for a partition
+
+	     To apply the normal combiner to the interemediate processing nodes
+             I have to make the buffers implement the RecordWritter interface.
+             
+             Changed the IOChannelBuffer to extend the RecordWritter class so 
+             that it can be fed to the reducer.
+
+23-09-2012 : FIXED the combiner to be applied on all merging tasks but the it
+             seems to be slower if the combiner is applied to all tasks than 
+             only at the end.
+          
+             Check also with more demanding reduce tasks. 
+
+	     TODO :
+             -------
+
+	     BUG in the grep example.
+
+             See the new API for Smurf.  
+ 
+24-09-2012 : Almost fixed the BUG in the grep. Have to fix it completely. 
+             Visco does not work with one Map. Fix it or bypass it.
