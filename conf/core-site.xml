@@ -5,9 +5,10 @@
 
 <configuration>
 
-  <property>
-    <name>fs.default.name</name>
-    <value>hdfs://localhost:9000</value>
-  </property>
+	<property>
+                <name>fs.default.name</name>
+                <value>hdfs://chinqchint-3.lille.grid5000.fr:9000</value>
+        </property>
+
 
 </configuration>
