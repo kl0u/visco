@@ -78,7 +78,7 @@ public class MergingTree <K extends WritableComparable<K>, V extends Writable> {
 
 		// create the NetworkIOChannels and connect them with the input paths
 		NetworkIOChannel networkChannels[] = new NetworkIOChannel[inputPaths.size()];
-		for (int i=0;i<networkChannels.length;i++) {
+		for (int i = 0; i < networkChannels.length; i++) {
 			networkChannels[i] = new NetworkIOChannel(jobConf, inputPaths.get(i), jobTokenSecret, 
 					codec, counter, taskId.getTaskID().getId(), reporter);
 		}

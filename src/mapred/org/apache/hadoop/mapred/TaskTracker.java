@@ -1306,29 +1306,28 @@ public class TaskTracker implements MRConstants, TaskUmbilicalProtocol, Runnable
     return localJobFile;
   }
 
-  protected void launchTaskForJob(TaskInProgress tip, JobConf jobConf,
-                                RunningJob rjob) throws IOException {
-    synchronized (tip) {
-      jobConf.set(JobConf.MAPRED_LOCAL_DIR_PROPERTY,
-                  localStorage.getDirsString());
-      tip.setJobConf(jobConf);
-      tip.setUGI(rjob.ugi);
-      tip.launchTask(rjob);
-    }
+  protected void launchTaskForJob(TaskInProgress tip, JobConf jobConf, RunningJob rjob) throws IOException {
+	  synchronized (tip) {
+		  jobConf.set(JobConf.MAPRED_LOCAL_DIR_PROPERTY, localStorage.getDirsString());
+		  tip.setJobConf(jobConf);
+		  tip.setUGI(rjob.ugi);
+		  tip.launchTask(rjob);
+	  }
   }
     
   public synchronized void shutdown() throws IOException, InterruptedException {
-    shuttingDown = true;
-    close();
-    if (this.server != null) {
-      try {
-        LOG.info("Shutting down StatusHttpServer");
-        this.server.stop();
-      } catch (Exception e) {
-        LOG.warn("Exception shutting down TaskTracker", e);
-      }
-    }
+	  shuttingDown = true;
+	  close();
+	  if (this.server != null) {
+		  try {
+			  LOG.info("Shutting down StatusHttpServer");
+			  this.server.stop();
+		  } catch (Exception e) {
+			  LOG.warn("Exception shutting down TaskTracker", e);
+		  }
+	  }
   }
+  
   /**
    * Close down the TaskTracker and all its components.  We must also shutdown
    * any running tasks or threads, and cleanup disk space.  A new TaskTracker
@@ -2394,35 +2393,36 @@ public class TaskTracker implements MRConstants, TaskUmbilicalProtocol, Runnable
    * @throws InterruptedException 
    */
   void startNewTask(final TaskInProgress tip) throws InterruptedException {
-    Thread launchThread = new Thread(new Runnable() {
-      @Override
-      public void run() {
-        try {
-          RunningJob rjob = localizeJob(tip);
-          tip.getTask().setJobFile(rjob.getLocalizedJobConf().toString());
-          // Localization is done. Neither rjob.jobConf nor rjob.ugi can be null
-          launchTaskForJob(tip, new JobConf(rjob.getJobConf()), rjob); 
-        } catch (Throwable e) {
-          String msg = ("Error initializing " + tip.getTask().getTaskID() + 
-                        ":\n" + StringUtils.stringifyException(e));
-          LOG.warn(msg);
-          tip.reportDiagnosticInfo(msg);
-          try {
-            tip.kill(true);
-            tip.cleanup(true);
-          } catch (IOException ie2) {
-            LOG.info("Error cleaning up " + tip.getTask().getTaskID(), ie2);
-          } catch (InterruptedException ie2) {
-            LOG.info("Error cleaning up " + tip.getTask().getTaskID(), ie2);
-          }
-          if (e instanceof Error) {
-            LOG.error("TaskLauncher error " + 
-                StringUtils.stringifyException(e));
-          }
-        }
-      }
-    });
-    launchThread.start();
+	  Thread launchThread = new Thread(new Runnable() {
+		
+		  @Override
+		  public void run() {
+			  try {
+				  RunningJob rjob = localizeJob(tip);
+				  tip.getTask().setJobFile(rjob.getLocalizedJobConf().toString());
+				  // Localization is done. Neither rjob.jobConf nor rjob.ugi can be null
+				  launchTaskForJob(tip, new JobConf(rjob.getJobConf()), rjob); 
+			  } catch (Throwable e) {
+				  String msg = ("Error initializing " + tip.getTask().getTaskID() + 
+						  ":\n" + StringUtils.stringifyException(e));
+				  LOG.warn(msg);
+				  tip.reportDiagnosticInfo(msg);
+				  try {
+					  tip.kill(true);
+					  tip.cleanup(true);
+				  } catch (IOException ie2) {
+					  LOG.info("Error cleaning up " + tip.getTask().getTaskID(), ie2);
+				  } catch (InterruptedException ie2) {
+					  LOG.info("Error cleaning up " + tip.getTask().getTaskID(), ie2);
+				  }
+				
+				  if (e instanceof Error) {
+					  LOG.error("TaskLauncher error "+ StringUtils.stringifyException(e));
+				  }
+			  }
+		  }
+	  });
+	  launchThread.start();
   }
 
   void addToMemoryManager(TaskAttemptID attemptId, boolean isMap,
@@ -3737,214 +3737,209 @@ public class TaskTracker implements MRConstants, TaskUmbilicalProtocol, Runnable
   }
 
   /**
-   * This class is used in TaskTracker's Jetty to serve the map outputs
-   * to other nodes.
+   * This class is used in TaskTracker's Jetty to serve the map outputs to other nodes.
    */
   public static class MapOutputServlet extends HttpServlet {
-    private static final long serialVersionUID = 1L;
-    private static final int MAX_BYTES_TO_READ = 64 * 1024;
+	
+	  private static final long serialVersionUID = 1L;
+	  private static final int MAX_BYTES_TO_READ = 64 * 1024;
     
-    private static LRUCache<String, Path> fileCache = new LRUCache<String, Path>(FILE_CACHE_SIZE);
-    private static LRUCache<String, Path> fileIndexCache = new LRUCache<String, Path>(FILE_CACHE_SIZE);
+	  private static LRUCache<String, Path> fileCache = new LRUCache<String, Path>(FILE_CACHE_SIZE);
+	  private static LRUCache<String, Path> fileIndexCache = new LRUCache<String, Path>(FILE_CACHE_SIZE);
     
-    @Override
-    public void doGet(HttpServletRequest request, 
-                      HttpServletResponse response
-                      ) throws ServletException, IOException {
-      String mapId = request.getParameter("map");
-      String reduceId = request.getParameter("reduce");
-      String jobId = request.getParameter("job");
+	  @Override
+	  public void doGet(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
 
-      if (jobId == null) {
-        throw new IOException("job parameter is required");
-      }
+		  String mapId = request.getParameter("map");
+		  String reduceId = request.getParameter("reduce");
+		  String jobId = request.getParameter("job");
 
-      if (mapId == null || reduceId == null) {
-        throw new IOException("map and reduce parameters are required");
-      }
-      ServletContext context = getServletContext();
-      int reduce = Integer.parseInt(reduceId);
-      byte[] buffer = new byte[MAX_BYTES_TO_READ];
-      // true iff IOException was caused by attempt to access input
-      boolean isInputException = true;
-      OutputStream outStream = null;
-      FileInputStream mapOutputIn = null;
+		  if (jobId == null) {
+			  throw new IOException("job parameter is required");
+		  }
+
+		  if (mapId == null || reduceId == null) {
+			  throw new IOException("map and reduce parameters are required");
+		  }
+		  
+		  ServletContext context = getServletContext();
+		  int reduce = Integer.parseInt(reduceId);
+		  byte[] buffer = new byte[MAX_BYTES_TO_READ];
+    
+		  // true iff IOException was caused by attempt to access input
+		  boolean isInputException = true;
+		  OutputStream outStream = null;
+		  FileInputStream mapOutputIn = null;
  
-      long totalRead = 0;
-      ShuffleServerInstrumentation shuffleMetrics =
-        (ShuffleServerInstrumentation) context.getAttribute("shuffleServerMetrics");
-      TaskTracker tracker = 
-        (TaskTracker) context.getAttribute("task.tracker");
-      String exceptionStackRegex =
-        (String) context.getAttribute("exceptionStackRegex");
-      String exceptionMsgRegex =
-        (String) context.getAttribute("exceptionMsgRegex");
+		  long totalRead = 0;
+		  ShuffleServerInstrumentation shuffleMetrics =
+				  (ShuffleServerInstrumentation) context.getAttribute("shuffleServerMetrics");
+		  TaskTracker tracker = 
+				  (TaskTracker) context.getAttribute("task.tracker");
+		  String exceptionStackRegex =
+				  (String) context.getAttribute("exceptionStackRegex");
+		  String exceptionMsgRegex =
+				  (String) context.getAttribute("exceptionMsgRegex");
 
-      verifyRequest(request, response, tracker, jobId);
+		  verifyRequest(request, response, tracker, jobId);
 
-      long startTime = 0;
-      try {
-        shuffleMetrics.serverHandlerBusy();
-        if(ClientTraceLog.isInfoEnabled())
-          startTime = System.nanoTime();
-        outStream = response.getOutputStream();
-        JobConf conf = (JobConf) context.getAttribute("conf");
-        LocalDirAllocator lDirAlloc = 
-          (LocalDirAllocator)context.getAttribute("localDirAllocator");
-        FileSystem rfs = ((LocalFileSystem)
-            context.getAttribute("local.file.system")).getRaw();
+		  long startTime = 0;
+		  try {
+			  shuffleMetrics.serverHandlerBusy();
+			  if(ClientTraceLog.isInfoEnabled())
+				  startTime = System.nanoTime();
+			  outStream = response.getOutputStream();
+			  JobConf conf = (JobConf) context.getAttribute("conf");
+		
+			  LocalDirAllocator lDirAlloc = 
+					  (LocalDirAllocator)context.getAttribute("localDirAllocator");
+			  FileSystem rfs = ((LocalFileSystem)
+					  context.getAttribute("local.file.system")).getRaw();
 
-      String userName = null;
-      String runAsUserName = null;
-      synchronized (tracker.runningJobs) {
-        RunningJob rjob = tracker.runningJobs.get(JobID.forName(jobId));
-        if (rjob == null) {
-          throw new IOException("Unknown job " + jobId + "!!");
-        }
-        userName = rjob.jobConf.getUser();
-        runAsUserName = tracker.getTaskController().getRunAsUser(rjob.jobConf);
-      }
-      // Index file
-      String intermediateOutputDir = TaskTracker.getIntermediateOutputDir(userName, jobId, mapId);
-      String indexKey = intermediateOutputDir + "/file.out.index";
-      Path indexFileName = fileIndexCache.get(indexKey);
-      if (indexFileName == null) {
-        indexFileName = lDirAlloc.getLocalPathToRead(indexKey, conf);
-        fileIndexCache.put(indexKey, indexFileName);
-      }
-
-      // Map-output file
-      String fileKey = intermediateOutputDir + "/file.out";
-      Path mapOutputFileName = fileCache.get(fileKey);
-      if (mapOutputFileName == null) {
-        mapOutputFileName = lDirAlloc.getLocalPathToRead(fileKey, conf);
-        fileCache.put(fileKey, mapOutputFileName);
-      }
-       
-
-        /**
-         * Read the index file to get the information about where
-         * the map-output for the given reducer is available. 
-         */
-        IndexRecord info = 
-          tracker.indexCache.getIndexInformation(mapId, reduce,indexFileName, 
-              runAsUserName);
-          
-        //set the custom "from-map-task" http header to the map task from which
-        //the map output data is being transferred
-        response.setHeader(FROM_MAP_TASK, mapId);
-        
-        //set the custom "Raw-Map-Output-Length" http header to 
-        //the raw (decompressed) length
-        response.setHeader(RAW_MAP_OUTPUT_LENGTH,
-            Long.toString(info.rawLength));
-
-        //set the custom "Map-Output-Length" http header to 
-        //the actual number of bytes being transferred
-        response.setHeader(MAP_OUTPUT_LENGTH,
-            Long.toString(info.partLength));
-
-        //set the custom "for-reduce-task" http header to the reduce task number
-        //for which this map output is being transferred
-        response.setHeader(FOR_REDUCE_TASK, Integer.toString(reduce));
-        
-        //use the same buffersize as used for reading the data from disk
-        response.setBufferSize(MAX_BYTES_TO_READ);
-        
-        /**
-         * Read the data from the sigle map-output file and
-         * send it to the reducer.
-         */
-        //open the map-output file
-        mapOutputIn = SecureIOUtils.openForRead(
-            new File(mapOutputFileName.toUri().getPath()), runAsUserName);
-
-        //seek to the correct offset for the reduce
-        mapOutputIn.skip(info.startOffset);
-        long rem = info.partLength;
-        int len =
-          mapOutputIn.read(buffer, 0, (int)Math.min(rem, MAX_BYTES_TO_READ));
-        while (rem > 0 && len >= 0) {
-          rem -= len;
-          try {
-            shuffleMetrics.outputBytes(len);
-            outStream.write(buffer, 0, len);
-            outStream.flush();
-          } catch (IOException ie) {
-            isInputException = false;
-            throw ie;
-          }
-          totalRead += len;
-          len =
-            mapOutputIn.read(buffer, 0, (int)Math.min(rem, MAX_BYTES_TO_READ));
-        }
-        
-        if (LOG.isDebugEnabled()) {
-          LOG.info("Sent out " + totalRead + " bytes for reduce: " + reduce + 
-                 " from map: " + mapId + " given " + info.partLength + "/" + 
-                 info.rawLength);
-        }
-
-      } catch (IOException ie) {
-        Log log = (Log) context.getAttribute("log");
-        String errorMsg = ("getMapOutput(" + mapId + "," + reduceId + 
-                           ") failed :\n"+
-                           StringUtils.stringifyException(ie));
-        log.warn(errorMsg);
-        checkException(ie, exceptionMsgRegex, exceptionStackRegex, shuffleMetrics);
-        if (isInputException) {
-          tracker.mapOutputLost(TaskAttemptID.forName(mapId), errorMsg);
-        }
-        response.sendError(HttpServletResponse.SC_GONE, errorMsg);
-        shuffleMetrics.failedOutput();
-        throw ie;
-      } finally {
-        if (null != mapOutputIn) {
-          mapOutputIn.close();
-        }
-        final long endTime = ClientTraceLog.isInfoEnabled() ? System.nanoTime() : 0;
-        shuffleMetrics.serverHandlerFree();
-        if (ClientTraceLog.isInfoEnabled()) {
-          ClientTraceLog.info(String.format(MR_CLIENTTRACE_FORMAT,
-                request.getLocalAddr() + ":" + request.getLocalPort(),
-                request.getRemoteAddr() + ":" + request.getRemotePort(),
-                totalRead, "MAPRED_SHUFFLE", mapId, endTime-startTime));
-        }
-      }
-      outStream.close();
-      shuffleMetrics.successOutput();
-    }
+			  String userName = null;
+			  String runAsUserName = null;
+		
+			  synchronized (tracker.runningJobs) {
+				  RunningJob rjob = tracker.runningJobs.get(JobID.forName(jobId));
+				  if (rjob == null) {
+					  throw new IOException("Unknown job " + jobId + "!!");
+				  }
+				  userName = rjob.jobConf.getUser();
+				  runAsUserName = tracker.getTaskController().getRunAsUser(rjob.jobConf);
+			  }
     
-    protected void checkException(IOException ie, String exceptionMsgRegex,
-        String exceptionStackRegex, ShuffleServerInstrumentation shuffleMetrics) {
-      // parse exception to see if it looks like a regular expression you
-      // configure. If both msgRegex and StackRegex set then make sure both
-      // match, otherwise only the one set has to match.
-      if (exceptionMsgRegex != null) {
-        String msg = ie.getMessage();
-        if (msg == null || !msg.matches(exceptionMsgRegex)) {
-          return;
-        }
-      }
-      if (exceptionStackRegex != null
-          && !checkStackException(ie, exceptionStackRegex)) {
-        return;
-      }
-      shuffleMetrics.exceptionsCaught();
-    }
+			  // Index file
+			  String intermediateOutputDir = TaskTracker.getIntermediateOutputDir(userName, jobId, mapId);
+			  String indexKey = intermediateOutputDir + "/file.out.index";
+			  Path indexFileName = fileIndexCache.get(indexKey);
+			  if (indexFileName == null) {
+				  indexFileName = lDirAlloc.getLocalPathToRead(indexKey, conf);
+				  fileIndexCache.put(indexKey, indexFileName);
+			  }
 
-    private boolean checkStackException(IOException ie,
-        String exceptionStackRegex) {
-      StackTraceElement[] stack = ie.getStackTrace();
+			  // Map-output file
+			  String fileKey = intermediateOutputDir + "/file.out";
+			  Path mapOutputFileName = fileCache.get(fileKey);
+			  if (mapOutputFileName == null) {
+				  mapOutputFileName = lDirAlloc.getLocalPathToRead(fileKey, conf);
+				  fileCache.put(fileKey, mapOutputFileName);
+			  }
+       
+			  /**
+			   * Read the index file to get the information about where
+			   * the map-output for the given reducer is available. 
+			   */
+			  IndexRecord info = tracker.indexCache.getIndexInformation(mapId, reduce,indexFileName, runAsUserName);
+          
+			  //set the custom "from-map-task" http header to the map task from which
+			  //the map output data is being transferred
+			  response.setHeader(FROM_MAP_TASK, mapId);
+        
+			  //set the custom "Raw-Map-Output-Length" http header to 
+			  //the raw (decompressed) length
+			  response.setHeader(RAW_MAP_OUTPUT_LENGTH, Long.toString(info.rawLength));
 
-      for (StackTraceElement elem : stack) {
-        String stacktrace = elem.toString();
-        if (stacktrace.matches(exceptionStackRegex)) {
-          return true;
-        }
-      }
-      return false;
-    }
+			  //set the custom "Map-Output-Length" http header to 
+			  //the actual number of bytes being transferred
+			  response.setHeader(MAP_OUTPUT_LENGTH, Long.toString(info.partLength));
+
+			  //set the custom "for-reduce-task" http header to the reduce task number
+			  //for which this map output is being transferred
+			  response.setHeader(FOR_REDUCE_TASK, Integer.toString(reduce));
+        
+			  //use the same buffersize as used for reading the data from disk
+			  response.setBufferSize(MAX_BYTES_TO_READ);
+        
+			  /**
+			   * Read the data from the sigle map-output file and
+			   * send it to the reducer.
+			   */
+			  //open the map-output file
+			  mapOutputIn = SecureIOUtils.openForRead(new File(mapOutputFileName.toUri().getPath()), runAsUserName);
+
+			  //seek to the correct offset for the reduce
+			  mapOutputIn.skip(info.startOffset);
+			  long rem = info.partLength;
+			  int len = mapOutputIn.read(buffer, 0, (int)Math.min(rem, MAX_BYTES_TO_READ));
+        
+			  while (rem > 0 && len >= 0) {
+				  rem -= len;
+				  try {
+					  shuffleMetrics.outputBytes(len);
+					  outStream.write(buffer, 0, len);
+					  outStream.flush();
+				  } catch (IOException ie) {
+					  isInputException = false;
+					  throw ie;
+				  }
+				  totalRead += len;
+				  len = mapOutputIn.read(buffer, 0, (int)Math.min(rem, MAX_BYTES_TO_READ));
+			  }
+        
+			  if (LOG.isDebugEnabled()) {
+				  LOG.info("Sent out " + totalRead + " bytes for reduce: " + reduce + 
+						  " from map: " + mapId + " given " + info.partLength + "/" + 
+						  info.rawLength);
+			  }
+			  
+		  } catch (IOException ie) {
+			  Log log = (Log) context.getAttribute("log");
+			  String errorMsg = ("getMapOutput("+ mapId +","+ reduceId +") failed :\n"+ StringUtils.stringifyException(ie));
+			  log.warn(errorMsg);
+			  checkException(ie, exceptionMsgRegex, exceptionStackRegex, shuffleMetrics);
+			  if (isInputException) {
+				  tracker.mapOutputLost(TaskAttemptID.forName(mapId), errorMsg);
+			  }
+			  response.sendError(HttpServletResponse.SC_GONE, errorMsg);
+			  shuffleMetrics.failedOutput();
+			  throw ie;
+		  } finally {
+			  if (null != mapOutputIn) {
+				  mapOutputIn.close();
+			  }
+			  final long endTime = ClientTraceLog.isInfoEnabled() ? System.nanoTime() : 0;
+			  shuffleMetrics.serverHandlerFree();
+			  if (ClientTraceLog.isInfoEnabled()) {
+				  ClientTraceLog.info(String.format(MR_CLIENTTRACE_FORMAT,
+						  request.getLocalAddr() + ":" + request.getLocalPort(),
+						  request.getRemoteAddr() + ":" + request.getRemotePort(),
+						  totalRead, "MAPRED_SHUFFLE", mapId, endTime-startTime));
+			  }
+		  }
+		  outStream.close();
+		  shuffleMetrics.successOutput();
+	  }
+    
+	  protected void checkException(IOException ie, String exceptionMsgRegex,
+			  String exceptionStackRegex, ShuffleServerInstrumentation shuffleMetrics) {
+    
+		  // parse exception to see if it looks like a regular expression you
+		  // configure. If both msgRegex and StackRegex set then make sure both
+		  // match, otherwise only the one set has to match.
+		  if (exceptionMsgRegex != null) {
+			  String msg = ie.getMessage();
+			  if (msg == null || !msg.matches(exceptionMsgRegex)) {
+				  return;
+			  }
+		  }
+
+		  if (exceptionStackRegex != null && !checkStackException(ie, exceptionStackRegex)) {
+			  return;
+		  }
+		  shuffleMetrics.exceptionsCaught();
+	  }
+
+	  private boolean checkStackException(IOException ie, String exceptionStackRegex) {
+		  StackTraceElement[] stack = ie.getStackTrace();
+
+		  for (StackTraceElement elem : stack) {
+			  String stacktrace = elem.toString();
+			  if (stacktrace.matches(exceptionStackRegex)) {
+				  return true;
+			  }
+		  }
+		  return false;
+	  }
 
 
     /**

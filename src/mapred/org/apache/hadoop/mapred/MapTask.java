@@ -157,8 +157,7 @@ class MapTask extends Task {
    * @param <K>
    * @param <V>
    */
-  class TrackedRecordReader<K, V> 
-      implements RecordReader<K,V> {
+  class TrackedRecordReader<K, V> implements RecordReader<K,V> {
     private RecordReader<K,V> rawIn;
     private Counters.Counter inputByteCounter;
     private Counters.Counter inputRecordCounter;

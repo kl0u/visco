@@ -400,17 +400,14 @@ public class ReduceTask extends Task {
 						
 			//final TaskReporter tmpReporter = reporter;	  // a temp reporter for the action delegate
 			
-			// should we create one per task???
 			Executor threadPool = Executors.newCachedThreadPool();		
 			
-			/////////////////// This is the combiner.
 			Counters.Counter combineInputCounter = reporter.getCounter(Task.Counter.COMBINE_INPUT_RECORDS);
 			CombinerRunner combinerRunner = CombinerRunner.create(conf, getTaskID(), combineInputCounter, reporter, null);
 			
 			String finalOutputName = getOutputName(getPartition());
 			MergingTree.createMergingTree(job, finalOutputName, locs, getJobTokenSecret(), threadPool,
-					spilledRecordsCounter, reduceInputKeyCounter,
-					reduceInputValueCounter, reduceOutputCounter,
+					spilledRecordsCounter, reduceInputKeyCounter, reduceInputValueCounter, reduceOutputCounter,
 					codec, getTaskID(), combinerRunner, reporter, new ActionDelegate() { 
 				
 				public void action() {
@@ -456,18 +453,17 @@ public class ReduceTask extends Task {
 				RawComparator comparator = job.getOutputValueGroupingComparator();
 
 				if (useNewApi) {
-					runNewReducer(job, umbilical, reporter, rIter, comparator, 
-							keyClass, valueClass);
+					runNewReducer(job, umbilical, reporter, rIter, 
+							comparator, keyClass, valueClass);
 				} else {
-					runOldReducer(job, umbilical, reporter, rIter, comparator, 
-							keyClass, valueClass);
+					runOldReducer(job, umbilical, reporter, rIter, 
+							comparator, keyClass, valueClass);
 				}
 				done(umbilical, reporter);
 			}
 		}
 	}
 
-	/// TODO
 	public class OldTrackingRecordWriter<K, V> implements RecordWriter<K, V> {
 
 		private final RecordWriter<K, V> real;
@@ -582,7 +578,6 @@ public class ReduceTask extends Task {
 		}
 	}
 
-	// TODO
 	public class NewTrackingRecordWriter<K,V> extends org.apache.hadoop.mapreduce.RecordWriter<K,V> {
 		
 		private final org.apache.hadoop.mapreduce.RecordWriter<K,V> real;
@@ -1261,6 +1256,7 @@ public class ReduceTask extends Task {
 
 		/** Copies map outputs as they become available */
 		private class MapOutputCopier extends Thread {
+		
 			// basic/unit connection timeout (in milliseconds)
 			private final static int UNIT_CONNECT_TIMEOUT = 30 * 1000;
 			// default read timeout (in milliseconds)
@@ -1385,7 +1381,7 @@ public class ReduceTask extends Task {
 						}
 					} catch (Throwable th) {
 						String msg = getTaskID() + " : Map output copy failure : " 
-						+ StringUtils.stringifyException(th);
+								+ StringUtils.stringifyException(th);	
 						reportFatalError(getTaskID(), th, msg);
 					}
 				}
@@ -1572,20 +1568,16 @@ public class ReduceTask extends Task {
 								compressedLength + " raw bytes) " + 
 								"into RAM from " + mapOutputLoc.getTaskAttemptId());
 					}
-
 					mapOutput = shuffleInMemory(mapOutputLoc, connection, input,
-							(int)decompressedLength,
-							(int)compressedLength);
+							(int) decompressedLength, (int) compressedLength);
+				
 				} else {
 					if (LOG.isDebugEnabled()) {
-						LOG.debug("Shuffling " + decompressedLength + " bytes (" + 
-								compressedLength + " raw bytes) " + 
-								"into Local-FS from " + mapOutputLoc.getTaskAttemptId());
+						LOG.debug("Shuffling "+ decompressedLength +" bytes ("+ 
+								compressedLength +" raw bytes) into Local-FS from "+ mapOutputLoc.getTaskAttemptId());
 					}
-
 					mapOutput = shuffleToDisk(mapOutputLoc, input, filename, compressedLength);
 				}
-
 				return mapOutput;
 			}
 
@@ -1602,18 +1594,20 @@ public class ReduceTask extends Task {
 				connection.setRequestProperty(
 						SecureShuffleUtils.HTTP_HEADER_URL_HASH, encHash);
 
-				InputStream input = getInputStream(connection, shuffleConnectionTimeout,
-						shuffleReadTimeout); 
+				InputStream input = getInputStream(connection,
+						shuffleConnectionTimeout, shuffleReadTimeout); 
 
 				// get the replyHash which is HMac of the encHash we sent to the server
 				String replyHash = connection.getHeaderField(
 						SecureShuffleUtils.HTTP_HEADER_REPLY_URL_HASH);
+				
 				if(replyHash==null) {
 					throw new IOException("security validation of TT Map output failed");
 				}
+				
 				if (LOG.isDebugEnabled())
-					LOG.debug("url="+msgToEncode+";encHash="+encHash+";replyHash="
-							+replyHash);
+					LOG.debug("url="+ msgToEncode +";encHash="+ encHash +";replyHash="+ replyHash);
+
 				// verify that replyHash is HMac of encHash
 				SecureShuffleUtils.verifyReply(replyHash, encHash, jobTokenSecret);
 				if (LOG.isDebugEnabled())
@@ -1798,26 +1792,19 @@ public class ReduceTask extends Task {
 								mapOutputLoc.getHost());
 					}
 				}
-
 				return mapOutput;
 			}
 
-			private MapOutput shuffleToDisk(MapOutputLocation mapOutputLoc,
-					InputStream input,
-					Path filename,
-					long mapOutputLength) 
-			throws IOException {
+			private MapOutput shuffleToDisk(MapOutputLocation mapOutputLoc, 
+					InputStream input, Path filename, long mapOutputLength) throws IOException {
+
 				// Find out a suitable location for the output on local-filesystem
-				Path localFilename = 
-					lDirAlloc.getLocalPathForWrite(filename.toUri().getPath(), 
-							mapOutputLength, conf);
+				Path localFilename = lDirAlloc.getLocalPathForWrite(
+						filename.toUri().getPath(), mapOutputLength, conf);
 
-				MapOutput mapOutput = 
-					new MapOutput(mapOutputLoc.getTaskId(), mapOutputLoc.getTaskAttemptId(), 
-							conf, localFileSys.makeQualified(localFilename), 
-							mapOutputLength);
-
-
+				MapOutput mapOutput = new MapOutput(mapOutputLoc.getTaskId(), mapOutputLoc.getTaskAttemptId(), 
+						conf, localFileSys.makeQualified(localFilename), mapOutputLength);
+				
 				// Copy data to local-disk
 				OutputStream output = null;
 				long bytesRead = 0;

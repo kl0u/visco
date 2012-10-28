@@ -104,18 +104,17 @@ public class TestMRServerPorts extends TestCase {
   /**
    * Check whether the TaskTracker can be started.
    */
-  private boolean canStartTaskTracker(JobConf conf) 
-  throws IOException, InterruptedException {
-    TaskTracker tt = null;
-    try {
-      tt = new TaskTracker(conf);
-    } catch(IOException e) {
-      if (e instanceof java.net.BindException)
-        return false;
-      throw e;
-    }
-    tt.shutdown();
-    return true;
+  private boolean canStartTaskTracker(JobConf conf) throws IOException, InterruptedException {
+	  TaskTracker tt = null;
+	  try {
+		  tt = new TaskTracker(conf);
+	  } catch(IOException e) {
+		  if (e instanceof java.net.BindException)
+			  return false;
+		  throw e;
+	  }
+	  tt.shutdown();
+	  return true;
   }
 
   /**
