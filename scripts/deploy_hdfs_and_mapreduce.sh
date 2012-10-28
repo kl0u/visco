@@ -29,7 +29,7 @@ chmod +r $HOME/keys/oargrid_ssh_key_${USER}_${JOB_ID}
 # it is done this way so that we do not have to change the 
 # remaining scripts.
 
-HADOOP_HOME=$HOME/hadoop-1.0.1
+HADOOP_HOME=$HOME/visco/hadoop-1.0.1
 
 ENV_VARS="export OAR_JOB_ID=$JOB_ID\n\
 export OAR_JOB_KEY_FILE=$HOME/keys/oargrid_ssh_key_${USER}_${JOB_ID}\n\

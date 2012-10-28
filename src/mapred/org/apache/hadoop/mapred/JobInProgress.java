@@ -1868,44 +1868,39 @@ public class JobInProgress {
     }
   }
   
-  public synchronized void reserveTaskTracker(TaskTracker taskTracker,
-                                              TaskType type, int numSlots) {
-    Map<TaskTracker, FallowSlotInfo> map =
-      (type == TaskType.MAP) ? trackersReservedForMaps : trackersReservedForReduces;
+  public synchronized void reserveTaskTracker(TaskTracker taskTracker, TaskType type, int numSlots) {
+	  
+	  Map<TaskTracker, FallowSlotInfo> map = (type == TaskType.MAP) ? trackersReservedForMaps : trackersReservedForReduces;
+	  long now = jobtracker.getClock().getTime();
     
-    long now = jobtracker.getClock().getTime();
-    
-    FallowSlotInfo info = map.get(taskTracker);
-    int reservedSlots = 0;
-    if (info == null) {
-      info = new FallowSlotInfo(now, numSlots);
-      reservedSlots = numSlots;
-    } else {
-      // Increment metering info if the reservation is changing
-      if (info.getNumSlots() != numSlots) {
-        Enum<Counter> counter = 
-          (type == TaskType.MAP) ? 
-              Counter.FALLOW_SLOTS_MILLIS_MAPS : 
-              Counter.FALLOW_SLOTS_MILLIS_REDUCES;
-        long fallowSlotMillis = (now - info.getTimestamp()) * info.getNumSlots();
-        jobCounters.incrCounter(counter, fallowSlotMillis);
+	  FallowSlotInfo info = map.get(taskTracker);
+	  int reservedSlots = 0;
+	  if (info == null) {
+		  info = new FallowSlotInfo(now, numSlots);
+		  reservedSlots = numSlots;
+	  } else {
+		  // Increment metering info if the reservation is changing
+		  if (info.getNumSlots() != numSlots) {
+			  Enum<Counter> counter = (type == TaskType.MAP) ? 
+					  Counter.FALLOW_SLOTS_MILLIS_MAPS : Counter.FALLOW_SLOTS_MILLIS_REDUCES;
+			  long fallowSlotMillis = (now - info.getTimestamp()) * info.getNumSlots();
+			  jobCounters.incrCounter(counter, fallowSlotMillis);
         
-        // Update 
-        reservedSlots = numSlots - info.getNumSlots();
-        info.setTimestamp(now);
-        info.setNumSlots(numSlots);
-      }
-    }
-    map.put(taskTracker, info);
-    if (type == TaskType.MAP) {
-      jobtracker.getInstrumentation().addReservedMapSlots(reservedSlots);
-      this.queueMetrics.addReservedMapSlots(reservedSlots);
-    }
-    else {
-      jobtracker.getInstrumentation().addReservedReduceSlots(reservedSlots);
-      this.queueMetrics.addReservedReduceSlots(reservedSlots);
-    }
-    jobtracker.incrementReservations(type, reservedSlots);
+			  // Update 
+			  reservedSlots = numSlots - info.getNumSlots();
+			  info.setTimestamp(now);
+			  info.setNumSlots(numSlots);
+		  }
+	  }
+	  map.put(taskTracker, info);
+	  if (type == TaskType.MAP) {
+		  jobtracker.getInstrumentation().addReservedMapSlots(reservedSlots);
+		  this.queueMetrics.addReservedMapSlots(reservedSlots);
+	  } else {
+		  jobtracker.getInstrumentation().addReservedReduceSlots(reservedSlots);
+		  this.queueMetrics.addReservedReduceSlots(reservedSlots);
+	  }
+	  jobtracker.incrementReservations(type, reservedSlots);
   }
   
   public synchronized void unreserveTaskTracker(TaskTracker taskTracker,

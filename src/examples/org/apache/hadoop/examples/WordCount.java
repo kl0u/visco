@@ -49,8 +49,6 @@ public class WordCount {
 
   public static void main(String[] args) throws Exception {
     
-	  System.out.println("Kostas : Now it is the original.");
-	  
 	  Configuration conf = new Configuration();
 	  String[] otherArgs = new GenericOptionsParser(conf, args).getRemainingArgs();
 	  if (otherArgs.length != 2) {
@@ -69,6 +67,9 @@ public class WordCount {
 	  FileOutputFormat.setOutputPath(job, new Path(otherArgs[1]));
     
 	  Date startTime = new Date();
+	  
+	  System.out.println("Launching "+ job.getNumReduceTasks() +" reduce tasks.");
+	  
 	  System.out.println("Job started: " + startTime);
 	  boolean res = job.waitForCompletion(true);
 	  Date end_time = new Date();

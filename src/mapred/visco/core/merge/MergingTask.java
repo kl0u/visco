@@ -281,6 +281,10 @@ public class MergingTask <K extends WritableComparable<K>, V extends Writable> i
 					if (!result.value) {
 						// we are going to sleep => send the current buffer (if any)
 						if (txBuffer != null) {
+							
+							if(this.combinerRunner != null) // && values_0.size() >= 4) {
+								this.runCombinerOnBuffer(this.txBuffer);
+							
 							txChannel.Send(txBuffer);
 							txBuffer = null;
 							taskState |= State.BlockedOnTX;
@@ -301,6 +305,10 @@ public class MergingTask <K extends WritableComparable<K>, V extends Writable> i
 					if (!result.value) {
 						// we are going to sleep => send the current buffer (if any)
 						if (txBuffer != null) {
+							
+							if(this.combinerRunner != null) // && values_0.size() >= 4) {
+								this.runCombinerOnBuffer(this.txBuffer);
+							
 							txChannel.Send(txBuffer);
 							txBuffer = null;
 							taskState |= State.BlockedOnTX;
@@ -340,6 +348,10 @@ public class MergingTask <K extends WritableComparable<K>, V extends Writable> i
 
 				// send remaining buffer (if contains any data)
 				if (txBuffer != null && txBuffer.size() > 0) {
+					
+					if(this.combinerRunner != null) // && values_0.size() >= 4) {
+						this.runCombinerOnBuffer(this.txBuffer);
+					
 					txChannel.Send(txBuffer);
 					txBuffer = null;
 				}
@@ -388,11 +400,11 @@ public class MergingTask <K extends WritableComparable<K>, V extends Writable> i
 
 						// TODO here we run the combiner.
 						// values_0 now contains both lists of values
-						if(this.combinerRunner != null) {// && values_0.size() >= 4) {
-							this.runCombiner(key_0, values_0, this.txBuffer);
-						} else {
+//	TODO					if(this.combinerRunner != null) {// && values_0.size() >= 4) {
+//							this.runCombiner(key_0, values_0, this.txBuffer);
+//						} else {
 							txBuffer.AddKeyValues(key_0, values_0);
-						}
+//						}
 
 						if (rxBuffer_0.size() == 0)
 							taskState = State.BlockedOnRX_0;
@@ -440,9 +452,30 @@ public class MergingTask <K extends WritableComparable<K>, V extends Writable> i
 			}
 
 			if ((taskState & State.BlockedOnTX) != 0) {
+				
+				if(this.combinerRunner != null) // && values_0.size() >= 4) {
+					this.runCombinerOnBuffer(this.txBuffer);
+				
 				txChannel.Send(txBuffer);
 				txBuffer = null;
 			}
+		}
+	}
+	
+	/**
+	 * Runs the combiner on a full buffer and the output is put back in the buffer.
+	 * @param buffer the buffer to apply the combiner on.
+	 * */
+	private final void runCombinerOnBuffer(IOChannelBuffer<K, V> buffer) {
+		for(int i = 0; i < buffer.size(); i++) {
+			K key = buffer.removeKey();
+			ArrayList<V> values = buffer.removeValues();
+			
+			if(values.size() == 1) {
+				buffer.AddKeyValues(key, values);
+				continue;
+			}
+			this.runCombiner(key, values, buffer);
 		}
 	}
 	

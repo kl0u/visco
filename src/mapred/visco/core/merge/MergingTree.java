@@ -89,6 +89,7 @@ public class MergingTree <K extends WritableComparable<K>, V extends Writable> {
 		 * task with more than one maps.
 		 * */
 		if(networkChannels.length == 1) {
+			// TODO check it
 			IndividualMergingTask task = new IndividualMergingTask(threadPool, reporter, jobConf, finalName,
 					reduceInputKeyCounter, reduceInputValueCounter, reduceOutputCounter, taskId, onMergeCompleted);
 			task.SetRXChannel(networkChannels[0]);
@@ -107,7 +108,7 @@ public class MergingTree <K extends WritableComparable<K>, V extends Writable> {
 //			}
 		
 			// create the root merge task
-			MergingTask rootTask = new MergingTask(threadPool, combiner, reporter, true);
+			MergingTask rootTask = new MergingTask(threadPool, null, reporter, true);// TODO here it was combiner the null
 			rootTask.SetTXChannel(txChannel);
 			
 			// build the rest of tree recursively
@@ -284,7 +285,7 @@ public class MergingTree <K extends WritableComparable<K>, V extends Writable> {
 //						reporter, finalName, (org.apache.hadoop.mapred.Counters.Counter) reduceOutputCounter, onMergeCompleted);
 //			}
 			// create the root merge task
-			MergingTask rootTask = new MergingTask(threadPool, combiner, reporter, true);
+			MergingTask rootTask = new MergingTask(threadPool, null, reporter, true); // TODO this null was combiner.
 			rootTask.SetTXChannel(txChannel);
 
 			// build the rest of tree recursively
