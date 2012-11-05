@@ -2507,6 +2507,8 @@ public class ReduceTask extends Task {
 			final RawComparator<K> comparator =
 				(RawComparator<K>)job.getOutputKeyComparator();
 
+			// TODO
+			
 			// segments required to vacate memory
 			List<Segment<K,V>> memDiskSegments = new ArrayList<Segment<K,V>>();
 			long inMemToDiskBytes = 0;

@@ -16,7 +16,7 @@
  * limitations under the License.
  */
 
-package org.apache.hadoop.streaming;
+
 
 import java.io.*;
 

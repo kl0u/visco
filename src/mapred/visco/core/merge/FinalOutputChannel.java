@@ -10,9 +10,12 @@ import org.apache.hadoop.io.Writable;
 import org.apache.hadoop.io.WritableComparable;
 import org.apache.hadoop.mapred.JobConf;
 import org.apache.hadoop.mapred.OutputCollector;
+import org.apache.hadoop.mapred.RecordWriter;
 import org.apache.hadoop.mapred.Reporter;
 import org.apache.hadoop.mapreduce.Counter;
 import org.apache.hadoop.mapreduce.OutputCommitter;
+import org.apache.hadoop.mapreduce.OutputFormat;
+import org.apache.hadoop.mapreduce.Reducer;
 import org.apache.hadoop.mapreduce.StatusReporter;
 import org.apache.hadoop.mapreduce.TaskAttemptContext;
 import org.apache.hadoop.mapreduce.TaskAttemptID;
@@ -21,7 +24,8 @@ import org.apache.hadoop.util.ReflectionUtils;
 import visco.util.ActionDelegate;
 import visco.util.ModifiableBoolean;
 
-public class FinalOutputChannel<K extends WritableComparable<K>, V extends Writable> implements IOChannel<IOChannelBuffer<K,V>> {
+public class FinalOutputChannel<INKEY extends WritableComparable<INKEY>, INVALUE extends Writable, 
+		OUTKEY extends WritableComparable<OUTKEY>, OUTVALUE extends Writable> implements IOChannel<IOChannelBuffer<INKEY,INVALUE>> {
 
 	/**
 	 * The configuration of the job
@@ -31,7 +35,7 @@ public class FinalOutputChannel<K extends WritableComparable<K>, V extends Writa
 	/**
 	 * A reporter for the progress
 	 */
-	private Reporter reporter;
+	private final Reporter reporter;
 
 	/**
 	 * The callback to execute when the merge process completes
@@ -41,29 +45,29 @@ public class FinalOutputChannel<K extends WritableComparable<K>, V extends Writa
 	/**
 	 * The IO channel buffer that we pass around.
 	 */
-	private final IOChannelBuffer<K, V> ioChannelBuffer;
+	private final IOChannelBuffer<INKEY, INVALUE> ioChannelBuffer;
 
 	
 	///////////		NEW API
 	/**
 	 * The output format of the job
 	 */
-	private org.apache.hadoop.mapreduce.OutputFormat<?,?> outputFormat;
+	private org.apache.hadoop.mapreduce.OutputFormat<OUTKEY, OUTVALUE> outputFormat;
 
 	/**
 	 * A reducer to reduce the final output data
 	 */
-	private org.apache.hadoop.mapreduce.Reducer<K,V,K,V> newReducer;
+	private org.apache.hadoop.mapreduce.Reducer<INKEY,INVALUE,OUTKEY,OUTVALUE> newReducer;
 
 	/**
 	 * A context to hold the reducer
 	 */
-	private org.apache.hadoop.mapreduce.Reducer<K,V,K,V>.Context reducerContext;
+	private org.apache.hadoop.mapreduce.Reducer<INKEY,INVALUE,OUTKEY,OUTVALUE>.Context reducerContext;
 	
 	/**
 	 * A record writer to write the final output
 	 */
-	private NewTrackingRecordWriter<K,V> newTrackedRW;
+	private NewTrackingRecordWriter<OUTKEY,OUTVALUE> newTrackedRW;
 		
 	/**
 	 * A task context to get the classes
@@ -75,17 +79,17 @@ public class FinalOutputChannel<K extends WritableComparable<K>, V extends Writa
 	/**
 	 * A reducer to reduce the final output data
 	 */
-	private org.apache.hadoop.mapred.Reducer<K,V,K,V> oldReducer;
+	private org.apache.hadoop.mapred.Reducer<INKEY, INVALUE, OUTKEY, OUTVALUE> oldReducer;
 	
 	/**
 	 * A record writer to write the final output
 	 */
-	private OldTrackingRecordWriter<K,V> oldTrackedRW;
+	private RecordWriter<OUTKEY, OUTVALUE> oldTrackedRW;
 	
 	/**
 	 * The collector to collect the output
 	 * */
-	private org.apache.hadoop.mapred.OutputCollector<K, V> oldCollector;
+	private org.apache.hadoop.mapred.OutputCollector<OUTKEY, OUTVALUE> oldCollector;
 	
 	
 	/**
@@ -98,27 +102,40 @@ public class FinalOutputChannel<K extends WritableComparable<K>, V extends Writa
 	 * 				the callback to execute when the merge process completes
 	 */
 	@SuppressWarnings("unchecked")
-	public FinalOutputChannel(JobConf jobConf, Reporter reporter, Counter keyCounter, Counter valueCounter, 
+	public FinalOutputChannel(JobConf jobConf, final Reporter reporter, Counter keyCounter, Counter valueCounter, 
 			Counter outputCounter, TaskAttemptID taskId, String finalName, ActionDelegate onMergeCompleted) {
 		
 		this.jobConf = jobConf;
-		this.ioChannelBuffer = new IOChannelBuffer<K, V>(100, this.jobConf);
+		this.ioChannelBuffer = new IOChannelBuffer<INKEY, INVALUE>(100, this.jobConf);
 		this.reporter = reporter;
 		this.onMergeCompleted = onMergeCompleted;
 		try {
 			if(this.jobConf.getUseNewReducer()) {
 				this.taskContext = new TaskAttemptContext(jobConf, taskId);
-				this.outputFormat = ReflectionUtils.newInstance(taskContext.getOutputFormatClass(), this.jobConf);
-				this.newReducer = (org.apache.hadoop.mapreduce.Reducer<K,V,K,V>) ReflectionUtils.newInstance(taskContext.getReducerClass(), jobConf);
-				this.newTrackedRW = new NewTrackingRecordWriter<K,V>(jobConf, reporter, taskContext, outputCounter, outputFormat);
+				this.outputFormat = (OutputFormat<OUTKEY, OUTVALUE>) ReflectionUtils.newInstance(taskContext.getOutputFormatClass(), this.jobConf);
+				this.newReducer = (Reducer<INKEY, INVALUE, OUTKEY, OUTVALUE>) ReflectionUtils.newInstance(taskContext.getReducerClass(), jobConf);
+				this.newTrackedRW = new NewTrackingRecordWriter<OUTKEY, OUTVALUE>(jobConf, reporter, taskContext, outputCounter, outputFormat);
 				this.reducerContext = createReduceContext(this.newReducer, taskContext.getConfiguration(), taskId, 
 						keyCounter, valueCounter, this.newTrackedRW, outputFormat.getOutputCommitter(taskContext), (StatusReporter) reporter);
 			} else {
-				this.oldReducer = ReflectionUtils.newInstance(this.jobConf.getReducerClass(), this.jobConf);
-				this.oldTrackedRW = new OldTrackingRecordWriter<K, V>((org.apache.hadoop.mapred.Counters.Counter) outputCounter, this.jobConf, reporter, finalName);
-				this.oldCollector = new OutputCollector<K, V>() {
-					public void collect(K key, V value) throws IOException {
+				this.oldReducer = (org.apache.hadoop.mapred.Reducer<INKEY, INVALUE, OUTKEY, OUTVALUE>) 
+						ReflectionUtils.newInstance(this.jobConf.getReducerClass(), this.jobConf);
+				
+				this.oldTrackedRW = new OldTrackingRecordWriter<OUTKEY, OUTVALUE>(
+						(org.apache.hadoop.mapred.Counters.Counter) outputCounter, this.jobConf, this.reporter, finalName);
+				
+				// these are the classes for the output keys and values.
+				Class<OUTKEY> outK = (Class<OUTKEY>) jobConf.getOutputKeyClass();
+				Class<OUTVALUE> outV = (Class<OUTVALUE>) jobConf.getOutputValueClass();
+				
+				//System.out.println("Expecting class : "+ outK.getName());
+				
+				this.oldCollector = new OutputCollector<OUTKEY, OUTVALUE>() {
+
+					@Override
+					public void collect(OUTKEY key, OUTVALUE value) throws IOException {
 						oldTrackedRW.write(key, value);
+						reporter.progress();
 					}
 				};
 			}
@@ -127,27 +144,32 @@ public class FinalOutputChannel<K extends WritableComparable<K>, V extends Writa
 			e.printStackTrace(System.out);
 		}
 	}
-
-	public IOChannelBuffer<K,V> GetEmpty(ModifiableBoolean result) {
+	
+	public IOChannelBuffer<INKEY,INVALUE> GetEmpty(ModifiableBoolean result) {
 		return ioChannelBuffer;
 	}
-
-	public void Send(IOChannelBuffer<K,V> item) {
+	
+	private int recordCounter = 0;
+	
+	public void Send(IOChannelBuffer<INKEY,INVALUE> item) {
 		
 		try {				
 			if(this.jobConf.getUseNewReducer()) {
 				while (item.size() > 0) {
-					K key = item.removeKey();
-					ArrayList<V> values = item.removeValues();
+					
+					INKEY key = item.removeKey();
+					ArrayList<INVALUE> values = item.removeValues();
 
 					this.newReducer.reduce(key, values, this.reducerContext); 
-					reporter.progress();	
+					this.reporter.progress();	
 				}
 			} else {
 				while (item.size() > 0) { 
-					K key = item.removeKey();
-					ArrayList<V> values = item.removeValues();
 					
+					INKEY key = item.removeKey();
+					ArrayList<INVALUE> values = item.removeValues();
+					
+					this.recordCounter++;
 					this.oldReducer.reduce(key, values.iterator(), this.oldCollector, this.reporter); 
 					this.reporter.progress();
 				}
@@ -159,11 +181,11 @@ public class FinalOutputChannel<K extends WritableComparable<K>, V extends Writa
 	}
 
 
-	public IOChannelBuffer<K,V> Receive(ModifiableBoolean result) {
+	public IOChannelBuffer<INKEY,INVALUE> Receive(ModifiableBoolean result) {
 		throw new UnsupportedOperationException("This method should never be called");
 	}
 
-	public void Release(IOChannelBuffer<K,V> item) {
+	public void Release(IOChannelBuffer<INKEY,INVALUE> item) {
 		throw new UnsupportedOperationException("This method should never be called");
 	}
 
@@ -171,8 +193,8 @@ public class FinalOutputChannel<K extends WritableComparable<K>, V extends Writa
 		try {
 			if(this.jobConf.getUseNewReducer()) {
 				while (this.ioChannelBuffer.size() > 0) {
-					K key = this.ioChannelBuffer.removeKey();
-					ArrayList<V> values = this.ioChannelBuffer.removeValues();
+					INKEY key = this.ioChannelBuffer.removeKey();
+					ArrayList<INVALUE> values = this.ioChannelBuffer.removeValues();
 
 					this.newReducer.reduce(key, values, this.reducerContext); 
 					reporter.progress();
@@ -180,15 +202,19 @@ public class FinalOutputChannel<K extends WritableComparable<K>, V extends Writa
 				this.newTrackedRW.close(this.taskContext);
 			} else {
 				while (this.ioChannelBuffer.size() > 0) {
-					K key = this.ioChannelBuffer.removeKey();
-					ArrayList<V> values = this.ioChannelBuffer.removeValues();
+					INKEY key = this.ioChannelBuffer.removeKey();
+					ArrayList<INVALUE> values = this.ioChannelBuffer.removeValues();
 
+					this.recordCounter++;
 					this.oldReducer.reduce(key, values.iterator(), this.oldCollector, this.reporter); 
 					this.reporter.progress();	
 				}
 				this.oldReducer.close();
 				this.oldTrackedRW.close(this.reporter);
-			}
+				
+				System.out.println("Wrote "+ this.recordCounter +" ones.");
+			}			
+			this.ioChannelBuffer.clear();
 			onMergeCompleted.action();
 		} catch (Exception e) {
 			e.printStackTrace(System.out);
@@ -199,8 +225,7 @@ public class FinalOutputChannel<K extends WritableComparable<K>, V extends Writa
 	
 	static {
 		try {
-			contextConstructor = 
-					org.apache.hadoop.mapreduce.Reducer.Context.class.getConstructor
+			contextConstructor = org.apache.hadoop.mapreduce.Reducer.Context.class.getConstructor
 					(new Class[]{org.apache.hadoop.mapreduce.Reducer.class,
 							Configuration.class,
 							TaskAttemptID.class,
@@ -215,12 +240,13 @@ public class FinalOutputChannel<K extends WritableComparable<K>, V extends Writa
 	}
 
 	@SuppressWarnings("unchecked")
-	private org.apache.hadoop.mapreduce.Reducer<K,V,K,V>.Context createReduceContext(org.apache.hadoop.mapreduce.Reducer<K,V,K,V> reducer,
+	private org.apache.hadoop.mapreduce.Reducer<INKEY,INVALUE,OUTKEY,OUTVALUE>.Context createReduceContext(
+			org.apache.hadoop.mapreduce.Reducer<INKEY,INVALUE,OUTKEY,OUTVALUE> reducer,
 			Configuration job,
 			TaskAttemptID taskId, 
 			Counter keyCounter,
 			Counter valueCounter,
-			org.apache.hadoop.mapreduce.RecordWriter<K,V> output, 
+			org.apache.hadoop.mapreduce.RecordWriter<OUTKEY,OUTVALUE> output, 
 			OutputCommitter committer,
 			StatusReporter reporter) throws IOException, ClassNotFoundException {
 		try {

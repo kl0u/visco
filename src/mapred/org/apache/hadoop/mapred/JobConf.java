@@ -595,10 +595,7 @@ public class JobConf extends Configuration {
    * @return the {@link OutputFormat} implementation for the map-reduce job.
    */
   public OutputFormat getOutputFormat() {
-    return ReflectionUtils.newInstance(getClass("mapred.output.format.class",
-                                                              TextOutputFormat.class,
-                                                              OutputFormat.class),
-                                                     this);
+	  return ReflectionUtils.newInstance(getClass("mapred.output.format.class", TextOutputFormat.class, OutputFormat.class), this);
   }
 
   /**
@@ -748,8 +745,7 @@ public class JobConf extends Configuration {
    * @return the key class for the job output data.
    */
   public Class<?> getOutputKeyClass() {
-    return getClass("mapred.output.key.class",
-                    LongWritable.class, Object.class);
+    return getClass("mapred.output.key.class", LongWritable.class, Object.class);
   }
   
   /**
@@ -767,11 +763,11 @@ public class JobConf extends Configuration {
    * @return the {@link RawComparator} comparator used to compare keys.
    */
   public RawComparator getOutputKeyComparator() {
-    Class<? extends RawComparator> theClass = getClass("mapred.output.key.comparator.class",
-	        null, RawComparator.class);
-    if (theClass != null)
-      return ReflectionUtils.newInstance(theClass, this);
-    return WritableComparator.get(getMapOutputKeyClass().asSubclass(WritableComparable.class));
+    
+	  Class<? extends RawComparator> theClass = getClass("mapred.output.key.comparator.class", null, RawComparator.class);
+	  if (theClass != null)
+		  return ReflectionUtils.newInstance(theClass, this);
+	  return WritableComparator.get(getMapOutputKeyClass().asSubclass(WritableComparable.class));
   }
 
   /**
@@ -846,13 +842,11 @@ public class JobConf extends Configuration {
    * @see #setOutputValueGroupingComparator(Class) for details.  
    */
   public RawComparator getOutputValueGroupingComparator() {
-    Class<? extends RawComparator> theClass = getClass("mapred.output.value.groupfn.class", null,
-        RawComparator.class);
-    if (theClass == null) {
-      return getOutputKeyComparator();
-    }
-    
-    return ReflectionUtils.newInstance(theClass, this);
+	  Class<? extends RawComparator> theClass = getClass("mapred.output.value.groupfn.class", null, RawComparator.class);
+	  if (theClass == null) {
+		  return getOutputKeyComparator();
+	  }
+	  return ReflectionUtils.newInstance(theClass, this);
   }
 
   /** 

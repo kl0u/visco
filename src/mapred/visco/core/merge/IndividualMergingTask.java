@@ -7,6 +7,7 @@ import java.util.ArrayList;
 import java.util.concurrent.Executor;
 
 import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.io.RawComparator;
 import org.apache.hadoop.io.Writable;
 import org.apache.hadoop.io.WritableComparable;
 import org.apache.hadoop.mapred.JobConf;

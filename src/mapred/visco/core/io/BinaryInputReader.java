@@ -104,8 +104,7 @@ public class BinaryInputReader<K, V> {
 	int recNo = 1;
 
 	private int reduce;
-
-
+	
 	/**
 	 * Constructs a BinaryInputReader
 	 * 
@@ -130,11 +129,18 @@ public class BinaryInputReader<K, V> {
 		if (conf != null) {
 			bufferSize = conf.getInt("io.file.buffer.size", DEFAULT_BUFFER_SIZE);
 		}
+	
+		this.reduce = reduce;
+		
 		//get InputStream for reading data
 		this.input = getURLInputStream(loc);
 		this.length = getMapOutputLength();
+		if(this.length == -1) {
+			throw new IOException("Failed to fetch map-output for "+ 
+					loc.getTaskAttemptId() +" from "+ loc.getHost());
+		}
+	
 		this.fileLength = this.length;
-		this.reduce = reduce;
 		checksumIn = new IFileInputStream(this.input,this.length);
 		
 		//check if we use compression or not
@@ -254,6 +260,9 @@ public class BinaryInputReader<K, V> {
 			LOG.warn("Invalid map id ", ia);
 			return -1;
 		}
+		
+
+		//check if we are getting data from the expected map task
 		TaskAttemptID expectedMapId = loc.getTaskAttemptId();
 		if (!mapId.equals(expectedMapId)) {
 			LOG.warn("data from wrong map: "+ mapId +", expected map output should be from " + expectedMapId);
@@ -271,9 +280,9 @@ public class BinaryInputReader<K, V> {
 					", decompressed len: " + decompressedLength);
 			return -1;
 		}
+		
+		//check if we are getting data for this reduce task  
 		int forReduce = (int)Integer.parseInt(connection.getHeaderField(FOR_REDUCE_TASK));
-
-		//check if we getting data from reduce node
 		if (forReduce != reduce) {
 			LOG.warn("data for the wrong reduce: " + forReduce +" with compressed len: " + compressedLength );
 			return -1;
@@ -295,8 +304,6 @@ public class BinaryInputReader<K, V> {
 	public long getPosition() throws IOException {    
 		return checksumIn.getPosition(); 
 	}
-
-//	private long bytesRead = 0;
 	
 	/**
 	 * Read up to len bytes into buf starting at offset off.
@@ -306,7 +313,7 @@ public class BinaryInputReader<K, V> {
 	 * @param len length of buffer
 	 * @return the no. of bytes read
 	 * @throws IOException
-	 */
+	 * */
 	private int readData(byte[] buf, int off, int len) throws IOException {
 		int bytesRead = 0;
 		while (bytesRead < len) {
@@ -343,6 +350,7 @@ public class BinaryInputReader<K, V> {
 
 		// Read as much data as will fit from the underlying stream 
 		int n = readData(destination, bytesRemaining, (destination.length - bytesRemaining));
+		
 		dataIn.reset(destination, 0, (bytesRemaining + n));
 		return destination;
 	}
@@ -358,6 +366,8 @@ public class BinaryInputReader<K, V> {
 		if (eof) {
 			throw new EOFException("Completed reading " + bytesRead);
 		}
+		
+		// TODO KOSTAS : here we assume that there is only one value associated with each key. Is this correct? 
 
 		// Check if we have enough data to read lengths. 
 		
@@ -428,6 +438,10 @@ public class BinaryInputReader<K, V> {
 		// Close the underlying stream
 		in.close();
 
+		if(LOG.isDebugEnabled())
+			LOG.debug(this.reduce + " : Read "+ this.bytesRead 
+					+" out of "+ this.length +" bytes, or "+ this.numRecordsRead +" records.");
+		
 		// Release the buffer
 		dataIn = null;
 		buffer = null;

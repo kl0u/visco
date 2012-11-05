@@ -4,8 +4,10 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.concurrent.Executor;
 
+import org.apache.hadoop.io.RawComparator;
 import org.apache.hadoop.io.Writable;
 import org.apache.hadoop.io.WritableComparable;
+import org.apache.hadoop.mapred.JobConf;
 import org.apache.hadoop.mapred.OutputCollector;
 import org.apache.hadoop.mapred.Reporter;
 import org.apache.hadoop.mapred.Task.CombinerRunner;
@@ -113,9 +115,12 @@ public class MergingTask <K extends WritableComparable<K>, V extends Writable> i
 	 */
 	private final int index;
 
+	private final JobConf jobConf;
+	
+	// TODO think if this should be instantiated in each class separately
 	private final CombinerRunner<K,V> combinerRunner;
 	
-	private final boolean isFinal;
+	private final RawComparator comparator;
 	
 	/**
 	 * Initializes an empty merger task. The channels must be initialized (using
@@ -126,12 +131,14 @@ public class MergingTask <K extends WritableComparable<K>, V extends Writable> i
 	 *            the thread pool used to execute this task
 	 * 
 	 */
-	MergingTask(Executor threadPool, CombinerRunner combiner, Reporter reporter, boolean isFinal) {
+	MergingTask(JobConf jobConf, Executor threadPool, CombinerRunner combiner, Reporter reporter) {
 		this.threadPool = threadPool;
 		this.reporter = reporter;
 		this.combinerRunner = combiner;
 		this.index = MergingTask.indexCounter++;
-		this.isFinal = isFinal;
+		
+		this.jobConf = jobConf;
+		this.comparator = this.jobConf.getOutputValueGroupingComparator();
 	}
 
 	/**
@@ -144,20 +151,22 @@ public class MergingTask <K extends WritableComparable<K>, V extends Writable> i
 	 * @param threadPool
 	 *            the thread pool used to execute this task
 	 */
-	public MergingTask(IOChannel<IOChannelBuffer<K, V>> rxChannel_0,
+	public MergingTask(JobConf jobConf, IOChannel<IOChannelBuffer<K, V>> rxChannel_0,
 			IOChannel<IOChannelBuffer<K, V>> rxChannel_1,
 			IOChannel<IOChannelBuffer<K, V>> txChannel, 
-			Executor threadPool, CombinerRunner combiner, Reporter reporter, boolean isFinal) {
+			Executor threadPool, CombinerRunner combiner, Reporter reporter) {
 		this.rxChannel_0 = rxChannel_0;
 		this.rxChannel_1 = rxChannel_1;
 		this.txChannel = txChannel;
 		this.threadPool = threadPool;
 		this.reporter = reporter;
 		
+		this.jobConf = jobConf;
+		this.comparator = this.jobConf.getOutputValueGroupingComparator();
+		
 		this.combinerRunner = combiner;
 		
 		this.index = MergingTask.indexCounter++;
-		this.isFinal = isFinal;
 	}
 
 	/**
@@ -175,6 +184,7 @@ public class MergingTask <K extends WritableComparable<K>, V extends Writable> i
 	 */
 	void SetRXChannels(IOChannel<IOChannelBuffer<K, V>> rxChannel_0,
 			IOChannel<IOChannelBuffer<K, V>> rxChannel_1) {
+
 		assert this.rxChannel_0 == null && this.rxChannel_1 == null;
 		this.rxChannel_0 = rxChannel_0;
 		this.rxChannel_1 = rxChannel_1;
@@ -222,8 +232,8 @@ public class MergingTask <K extends WritableComparable<K>, V extends Writable> i
 	void UnblockRX_1() {
 		boolean queueThread = false;
 		synchronized (taskLock) {
-			// wake up only if the task is not running and if the task is blocked
-			// on RX_1 but not RX_0
+			
+			// wake up only if the task is not running and if the task is blocked on RX_1 but not RX_0
 			if (!taskIsRunning && (taskState & State.BlockedOnAllRX) == State.BlockedOnRX_1) {
 				// start the task
 				taskIsRunning = true;
@@ -236,9 +246,6 @@ public class MergingTask <K extends WritableComparable<K>, V extends Writable> i
 			threadPool.execute(this);
 	}
 
-	// / <summary>
-	// / Channel TX is now un-blocked
-	// / </summary>
 	void UnblockTX() {
 		boolean queueThread = false;
 		synchronized (taskLock) {
@@ -258,6 +265,12 @@ public class MergingTask <K extends WritableComparable<K>, V extends Writable> i
 			threadPool.execute(this);
 	}
 
+	private int zeroValuesRead = 0;
+	private int oneValuesRead = 0;
+	
+	private int noOfRecordsIn = 0;
+	private int noOfRecordsOut = 0;
+	
 	/*
 	 * (non-Javadoc)
 	 * 
@@ -273,19 +286,25 @@ public class MergingTask <K extends WritableComparable<K>, V extends Writable> i
 		ModifiableBoolean result = new ModifiableBoolean();
 
 		while (true) {
+			
 			synchronized (taskLock) {
-								
+				
 				// these ifs just fix the state flags and take new buffers (input and output)
 				if ((taskState & State.BlockedOnRX_0) != 0) {
+					
 					rxBuffer_0 = rxChannel_0.Receive(result);
 					if (!result.value) {
+
 						// we are going to sleep => send the current buffer (if any)
 						if (txBuffer != null) {
 							
-							if(this.combinerRunner != null) // && values_0.size() >= 4) {
-								this.runCombinerOnBuffer(this.txBuffer);
+//							if(this.combinerRunner != null) // && values_0.size() >= 4) {
+//								this.runCombinerOnBuffer(this.txBuffer);
 							
+
+							this.noOfRecordsOut += txBuffer.size();
 							txChannel.Send(txBuffer);
+							
 							txBuffer = null;
 							taskState |= State.BlockedOnTX;
 						}
@@ -295,21 +314,24 @@ public class MergingTask <K extends WritableComparable<K>, V extends Writable> i
 						reporter.progress();
 						return;
 					}
-
 					// remove the block on rx 0
 					taskState &= ~State.BlockedOnRX_0;
 				}
 
 				if ((taskState & State.BlockedOnRX_1) != 0) {					
+					
 					rxBuffer_1 = rxChannel_1.Receive(result);
 					if (!result.value) {
+						
 						// we are going to sleep => send the current buffer (if any)
 						if (txBuffer != null) {
 							
-							if(this.combinerRunner != null) // && values_0.size() >= 4) {
-								this.runCombinerOnBuffer(this.txBuffer);
-							
+//							if(this.combinerRunner != null) // && values_0.size() >= 4) {
+//								this.runCombinerOnBuffer(this.txBuffer);
+//							
+							this.noOfRecordsOut += txBuffer.size();
 							txChannel.Send(txBuffer);
+							
 							txBuffer = null;
 							taskState |= State.BlockedOnTX;
 						}
@@ -349,13 +371,19 @@ public class MergingTask <K extends WritableComparable<K>, V extends Writable> i
 				// send remaining buffer (if contains any data)
 				if (txBuffer != null && txBuffer.size() > 0) {
 					
-					if(this.combinerRunner != null) // && values_0.size() >= 4) {
-						this.runCombinerOnBuffer(this.txBuffer);
+//					if(this.combinerRunner != null) // && values_0.size() >= 4) {
+//						this.runCombinerOnBuffer(this.txBuffer);
 					
+					this.noOfRecordsOut += txBuffer.size();
 					txChannel.Send(txBuffer);
+					
 					txBuffer = null;
 				}
 
+				if(this.noOfRecordsIn != this.noOfRecordsOut)
+					System.out.println(this.index + " : missing records : "+ (this.noOfRecordsIn - this.noOfRecordsOut) +" " +
+							",out="+ this.noOfRecordsOut +".");
+				
 				txChannel.Close();
 
 				// indicate progress before we go to sleep
@@ -364,29 +392,42 @@ public class MergingTask <K extends WritableComparable<K>, V extends Writable> i
 			}
 
 			while (taskState == State.NotBlocked) {
+				
 				if (rxBuffer_0 != null && rxBuffer_1 != null) {
-					// this is a problem in the NetworkChannel I think. Ask Paolo and try to fix it.
-					compare = rxBuffer_0.peekKey().compareTo(rxBuffer_1.peekKey());
+					
+					compare = this.comparator.compare(rxBuffer_0.peekKey(), rxBuffer_1.peekKey());
 
 					if (compare < 0) {
+					
+						this.zeroValuesRead++;
+						
 						K key = rxBuffer_0.removeKey();
 						ArrayList<V> values = rxBuffer_0.removeValues();
-
+						
 						txBuffer.AddKeyValues(key, values);
-
+						this.noOfRecordsIn++;
+						
 						if (rxBuffer_0.size() == 0)
 							taskState = State.BlockedOnRX_0;
 
 					} else if (compare > 0) {
+
+						this.oneValuesRead++;
+
 						K key = rxBuffer_1.removeKey();
 						ArrayList<V> values = rxBuffer_1.removeValues();
 
 						txBuffer.AddKeyValues(key, values);
-
+						this.noOfRecordsIn++;
+						
 						if (rxBuffer_1.size() == 0)
 							taskState = State.BlockedOnRX_1;
 						
 					} else { // if(compare == 0)
+						
+						this.zeroValuesRead++;
+						this.oneValuesRead++;
+						
 						// the keys are the same
 						K key_0 = rxBuffer_0.removeKey();
 						K key_1 = rxBuffer_1.removeKey();
@@ -400,10 +441,12 @@ public class MergingTask <K extends WritableComparable<K>, V extends Writable> i
 
 						// TODO here we run the combiner.
 						// values_0 now contains both lists of values
-//	TODO					if(this.combinerRunner != null) {// && values_0.size() >= 4) {
+//						if(this.combinerRunner != null) {// && values_0.size() >= 4) {
 //							this.runCombiner(key_0, values_0, this.txBuffer);
 //						} else {
 							txBuffer.AddKeyValues(key_0, values_0);
+							this.noOfRecordsIn++;
+							
 //						}
 
 						if (rxBuffer_0.size() == 0)
@@ -414,25 +457,31 @@ public class MergingTask <K extends WritableComparable<K>, V extends Writable> i
 					}
 				} else if (rxBuffer_0 != null) {
 
+					this.zeroValuesRead++;
+					
 					K key = rxBuffer_0.removeKey();
 					ArrayList<V> values = rxBuffer_0.removeValues();
 
 					txBuffer.AddKeyValues(key, values);
-
+					this.noOfRecordsIn++;
+					
 					if (rxBuffer_0.size() == 0)
 						taskState = State.BlockedOnRX_0;
 					
 				} else { // if (rxBuffer_1 != null)
+					
+					this.oneValuesRead++;
+					
 					K key = rxBuffer_1.removeKey();
 					ArrayList<V> values = rxBuffer_1.removeValues();
 
 					txBuffer.AddKeyValues(key, values);
-
+					this.noOfRecordsIn++;
+					
 					if (rxBuffer_1.size() == 0)
 						taskState = State.BlockedOnRX_1;
 				}
 
-				// check the tx buffer size
 				if (!txBuffer.hasRemaining()) {
 					// TX buffer reached maximum capacity
 					taskState |= State.BlockedOnTX;
@@ -453,9 +502,10 @@ public class MergingTask <K extends WritableComparable<K>, V extends Writable> i
 
 			if ((taskState & State.BlockedOnTX) != 0) {
 				
-				if(this.combinerRunner != null) // && values_0.size() >= 4) {
-					this.runCombinerOnBuffer(this.txBuffer);
+//				if(this.combinerRunner != null) // && values_0.size() >= 4) {
+//					this.runCombinerOnBuffer(this.txBuffer);
 				
+				this.noOfRecordsOut += txBuffer.size();
 				txChannel.Send(txBuffer);
 				txBuffer = null;
 			}

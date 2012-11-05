@@ -7,6 +7,7 @@ import java.util.ArrayList;
 import javax.crypto.SecretKey;
 
 import org.apache.hadoop.io.DataInputBuffer;
+import org.apache.hadoop.io.RawComparator;
 import org.apache.hadoop.io.Writable;
 import org.apache.hadoop.io.WritableComparable;
 import org.apache.hadoop.io.compress.CompressionCodec;
@@ -74,6 +75,10 @@ public class NetworkIOChannel<K extends WritableComparable<K>, V extends Writabl
 	 */
 	private K key;
 	
+	private K lastKey;
+	private boolean hasMoreValues = false;
+	private final RawComparator comparator;
+	
 	/**
 	 * A value class
 	 */
@@ -120,6 +125,9 @@ public class NetworkIOChannel<K extends WritableComparable<K>, V extends Writabl
 		this.valueDeserializer.open(this.vb);
 
 		this.item = new IOChannelBuffer<K, V>(100, this.jobConf);
+		
+		this.comparator = this.jobConf.getOutputValueGroupingComparator();
+		
 		this.reader = new BinaryInputReader<K,V>(jobConf, codec, counter, inputLocation, jobTokenSecret, reduce);
 	}
 	
@@ -135,10 +143,8 @@ public class NetworkIOChannel<K extends WritableComparable<K>, V extends Writabl
 
 	private boolean isFinished = false;
 	
+	
 	@Override
-	/**
-	 * TODO make this method nicer.  
-	 * */
 	public IOChannelBuffer<K, V> Receive(ModifiableBoolean result) {
 		if(isFinished) {
 			result.value = true;
@@ -151,6 +157,8 @@ public class NetworkIOChannel<K extends WritableComparable<K>, V extends Writabl
 				value  = null;
 								
 				key = this.keyDeserializer.deserialize(key);
+		//		this.hasMoreValues = (this.comparator.compare(key, this.lastKey) == 0);
+				
 				value = this.valueDeserializer.deserialize(value);
 			
 				ArrayList<V> values = new ArrayList<V>();
@@ -189,6 +197,64 @@ public class NetworkIOChannel<K extends WritableComparable<K>, V extends Writabl
 		return ((item.size() == 0) ? null : item);
 	}
 
+	int dupCounter = 0;
+	
+//	@Override
+//	public IOChannelBuffer<K, V> Receive(ModifiableBoolean result) {
+//		if(isFinished) {
+//			result.value = true;
+//			return ((item.size() == 0) ? null : item);
+//		}
+//		
+//		try{
+//			while (item.hasRemaining() && !(isFinished = reader.next(kb, vb))) {
+//				key = null;
+//				value  = null;
+//								
+//				key = this.keyDeserializer.deserialize(key);
+//				if(this.lastKey != null && (this.comparator.compare(key, this.lastKey) == 0)) {
+//						dupCounter++;
+//				}
+//				this.lastKey = key;
+//				
+//				value = this.valueDeserializer.deserialize(value);
+//			
+//				ArrayList<V> values = new ArrayList<V>();
+//				values.add(value);
+//				item.AddKeyValues(key, values);
+//				
+//				reporter.progress();
+//			}
+//			
+//		} catch (EOFException eof) {
+//			try {
+//				// close the IFile.Reader instance
+//				reader.close();
+//			} catch (IOException ioe) {
+//				ioe.printStackTrace(System.out);
+//			}
+//			result.value = true;
+//			return (item.size() >  0) ? item : null;
+//		} catch (IOException ioe) {
+//			ioe.printStackTrace(System.out);
+//			return null;
+//		}
+//		
+//		try{
+//			if(isFinished) {
+//				reader.close();
+//				System.out.println("INPUT DUPS : "+ this.dupCounter);
+//				result.value = true;
+//				reporter.progress();
+//				return ((item.size() == 0) ? null : item);
+//			}
+//		} catch (IOException ioe) {
+//			ioe.printStackTrace(System.out);
+//		}
+//			
+//		result.value = true;
+//		return ((item.size() == 0) ? null : item);
+//	}
 	@Override
 	public void Release(IOChannelBuffer<K, V> item) {
 		this.item.clear();

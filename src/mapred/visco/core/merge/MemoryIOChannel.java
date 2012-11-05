@@ -1,13 +1,9 @@
 package visco.core.merge;
 
-
-import java.util.ArrayList;
-
 import org.apache.hadoop.io.Writable;
 import org.apache.hadoop.io.WritableComparable;
 import org.apache.hadoop.mapred.JobConf;
 import org.apache.hadoop.mapred.Reporter;
-import org.apache.hadoop.mapred.Task.CombinerRunner;
 import org.apache.hadoop.mapreduce.TaskAttemptID;
 
 import visco.util.ActionDelegate;
@@ -45,18 +41,6 @@ implements IOChannel<IOChannelBuffer<K,V>> {
 	 * */
 	private ActionDelegate consumerUnblocked;
 
-	///////////////
-	// Combiner effort
-	//private final CombinerRunner<K,V> combinerRunner;
-	
-	
-	
-	
-	
-	
-	
-	/////////////////
-	
 	/**
 	 * Empty delegate
 	 */
@@ -89,7 +73,6 @@ implements IOChannel<IOChannelBuffer<K,V>> {
 			this.rx.Enqueue(teeSource.Func());
 
 		this.consumerUnblocked = consumerUnblocked;
-//		this.combinerRunner = combinerRunner;
 	}
 
 	@Override
@@ -99,15 +82,6 @@ implements IOChannel<IOChannelBuffer<K,V>> {
 
 	@Override
 	public void Send(IOChannelBuffer<K,V> item) {
-		/* assert because runtime performance hit on every send might be too much */
-		//assert !this.isClosed : "Can't send: IoChannel has been Closed";
-		// Pass the buffer to the next level
-		// TODO here apply the combiner if it exists.
-//		for(int i = 0; i < item.size(); i++) {
-//			K key = item.removeKey();
-//			ArrayList<V> values = item.removeValues();
-//			this.combinerRunner.
-//		}
 		if (!this.tx.Enqueue(item))
 			throw new RuntimeException("Send would block: can't happen: duplicate Send?");
 	}
@@ -123,6 +97,11 @@ implements IOChannel<IOChannelBuffer<K,V>> {
 			//assert item != null;
 			return item;
 		} else if (this.isClosed) {
+
+
+			if(tx.Count() != 0)
+				System.out.println(this.tx.Count());
+			
 			/*
 			 * we don't have any more elements to return but this channel has
 			 * been closed. So we should return null but set the result value to
@@ -146,22 +125,23 @@ implements IOChannel<IOChannelBuffer<K,V>> {
 	@Override
 	public void Close() {
 		isClosed = true;
+
 		// wake-up the consumer
 		consumerUnblocked.action();
 	}
 
-	public boolean getIsClosed() {
-		return isClosed;
-	}
+//	public boolean getIsClosed() {
+//		return isClosed;
+//	}
 
-	// for the purpose of testing, since RX is private
-	public void setRXDequeue(ModifiableBoolean MB) {
-		rx.Dequeue(MB);
-	}
-
-	// for the purpose of testing, since RX is private
-	public void setTXEnqueue(IOChannelBuffer<K, V> item) {
-		tx.Enqueue(item);
-	}
+//	// for the purpose of testing, since RX is private
+//	public void setRXDequeue(ModifiableBoolean MB) {
+//		rx.Dequeue(MB);
+//	}
+//
+//	// for the purpose of testing, since RX is private
+//	public void setTXEnqueue(IOChannelBuffer<K, V> item) {
+//		tx.Enqueue(item);
+//	}
 
 }

@@ -23,6 +23,7 @@ import org.apache.hadoop.examples.dancing.Sudoku;
 import org.apache.hadoop.examples.terasort.TeraGen;
 import org.apache.hadoop.examples.terasort.TeraSort;
 import org.apache.hadoop.examples.terasort.TeraValidate;
+import org.apache.hadoop.examples.tfidf.TfidfDriver;
 import org.apache.hadoop.examples.tfidf.WordCountsForDocs;
 import org.apache.hadoop.examples.tfidf.WordFrequenceInDoc;
 import org.apache.hadoop.examples.tfidf.WordsInCorpusTFIDF;
@@ -72,12 +73,13 @@ public class ExampleDriver {
 			 *  A more elegant solution is to make it a jar of its own for tfidf
 			 *  OR hardcode the chain in the driver class.
 			 */
-			pgd.addClass("tf-idf-1", WordFrequenceInDoc.class,
-					"TF-IDF 1 --- Word Frequence In Documents");
-			pgd.addClass("tf-idf-2", WordCountsForDocs.class,
-					"TF-IDF 2 --- Word Counts In Documents");
-			pgd.addClass("tf-idf-3", WordsInCorpusTFIDF.class,
-					"TF-IDF 3 --- Word in Corpus and TF-IDF");
+			pgd.addClass("tfidf", TfidfDriver.class, "Implementation of Tfidf on Map Reduce.");
+//			pgd.addClass("tf-idf-1", WordFrequenceInDoc.class,
+//					"TF-IDF 1 --- Word Frequence In Documents");
+//			pgd.addClass("tf-idf-2", WordCountsForDocs.class,
+//					"TF-IDF 2 --- Word Counts In Documents");
+//			pgd.addClass("tf-idf-3", WordsInCorpusTFIDF.class,
+//					"TF-IDF 3 --- Word in Corpus and TF-IDF");
  
 			pgd.driver(argv);
       

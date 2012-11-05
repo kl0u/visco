@@ -20,6 +20,8 @@ public class OldTrackingRecordWriter<K1 extends WritableComparable<K1>,V1 extend
 	private final Counter fileOutputByteCounter;
 	private final Statistics fsStats;
 
+	private int recordCounter = 0;
+	
 	public OldTrackingRecordWriter(Counter outputRecordCounter, JobConf job, Reporter reporter, String finalName) throws IOException {
 		
 		this.outputRecordCounter = outputRecordCounter;
@@ -40,6 +42,8 @@ public class OldTrackingRecordWriter<K1 extends WritableComparable<K1>,V1 extend
 
 	@Override
 	public void write(K1 key, V1 value) throws IOException {
+		this.recordCounter++;
+		
 		long bytesOutPrev = getOutputBytes(fsStats);
 		real.write(key, value);
 		long bytesOutCurr = getOutputBytes(fsStats);
@@ -57,5 +61,9 @@ public class OldTrackingRecordWriter<K1 extends WritableComparable<K1>,V1 extend
 
 	private long getOutputBytes(Statistics stats) {
 		return stats == null ? 0 : stats.getBytesWritten();
+	}
+	
+	public int getNoOfRecordsWritten() {
+		return this.recordCounter;
 	}
 }

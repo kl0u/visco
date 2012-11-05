@@ -44,7 +44,7 @@ public class TfidfDriver extends Configured implements Tool {
 	}
 	
 	public static void main(String[] args) throws Exception {
-	    int res = ToolRunner.run(new JobConf(), new TeraGen(), args);
+	    int res = ToolRunner.run(new JobConf(), new TfidfDriver(), args);
 	    System.exit(res); 
 	}
 }

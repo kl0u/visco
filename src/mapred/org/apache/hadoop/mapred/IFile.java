@@ -345,110 +345,106 @@ public class IFile {
       bufferSize = buffer.length;
     }
     
-    private byte[] rejigData(byte[] source, byte[] destination) 
-    throws IOException{
-      // Copy remaining data into the destination array
-      int bytesRemaining = dataIn.getLength()-dataIn.getPosition();
-      if (bytesRemaining > 0) {
-        System.arraycopy(source, dataIn.getPosition(), 
-            destination, 0, bytesRemaining);
-      }
+    private byte[] rejigData(byte[] source, byte[] destination) throws IOException{
+ 
+    	// Copy remaining data into the destination array
+    	int bytesRemaining = dataIn.getLength()-dataIn.getPosition();
+    	if (bytesRemaining > 0) {
+    		System.arraycopy(source, dataIn.getPosition(), destination, 0, bytesRemaining);
+    	}
       
-      // Read as much data as will fit from the underlying stream 
-      int n = readData(destination, bytesRemaining, 
-                       (destination.length - bytesRemaining));
-      dataIn.reset(destination, 0, (bytesRemaining + n));
+    	// Read as much data as will fit from the underlying stream 
+    	int n = readData(destination, bytesRemaining, (destination.length - bytesRemaining));
+    	dataIn.reset(destination, 0, (bytesRemaining + n));
       
-      return destination;
+    	return destination;
     }
     
-    public boolean next(DataInputBuffer key, DataInputBuffer value) 
-    throws IOException {
-      // Sanity check
-      if (eof) {
-        throw new EOFException("Completed reading " + bytesRead);
-      }
+    public boolean next(DataInputBuffer key, DataInputBuffer value) throws IOException {
+
+    	// Sanity check
+    	if (eof) {
+    		throw new EOFException("Completed reading " + bytesRead);
+    	}
       
-      // Check if we have enough data to read lengths
-      if ((dataIn.getLength() - dataIn.getPosition()) < 2*MAX_VINT_SIZE) {
-        readNextBlock(2*MAX_VINT_SIZE);
-      }
+    	// Check if we have enough data to read lengths
+    	if ((dataIn.getLength() - dataIn.getPosition()) < 2*MAX_VINT_SIZE) {
+    		readNextBlock(2*MAX_VINT_SIZE);
+    	}
       
-      // Read key and value lengths
-      int oldPos = dataIn.getPosition();
-      int keyLength = WritableUtils.readVInt(dataIn);
-      int valueLength = WritableUtils.readVInt(dataIn);
-      int pos = dataIn.getPosition();
-      bytesRead += pos - oldPos;
+    	// Read key and value lengths
+    	int oldPos = dataIn.getPosition();
+    	int keyLength = WritableUtils.readVInt(dataIn);
+    	int valueLength = WritableUtils.readVInt(dataIn);
+    	int pos = dataIn.getPosition();
+    	bytesRead += pos - oldPos;
       
-      // Check for EOF
-      if (keyLength == EOF_MARKER && valueLength == EOF_MARKER) {
-        eof = true;
-        return false;
-      }
+    	// Check for EOF
+    	if (keyLength == EOF_MARKER && valueLength == EOF_MARKER) {
+    		eof = true;
+    		return false;
+    	}
       
-      // Sanity check
-      if (keyLength < 0) {
-        throw new IOException("Rec# " + recNo + ": Negative key-length: " + 
-                              keyLength);
-      }
-      if (valueLength < 0) {
-        throw new IOException("Rec# " + recNo + ": Negative value-length: " + 
-                              valueLength);
-      }
+    	// Sanity check
+    	if (keyLength < 0) {
+    		throw new IOException("Rec# " + recNo + ": Negative key-length: "+ keyLength);
+    	}
+   
+    	if (valueLength < 0) {
+    		throw new IOException("Rec# " + recNo + ": Negative value-length: "+ valueLength);
+    	}
       
-      final int recordLength = keyLength + valueLength;
+    	final int recordLength = keyLength + valueLength;
       
-      // Check if we have the raw key/value in the buffer
-      if ((dataIn.getLength()-pos) < recordLength) {
-        readNextBlock(recordLength);
+    	// Check if we have the raw key/value in the buffer
+    	if ((dataIn.getLength()-pos) < recordLength) {
+    		readNextBlock(recordLength);
         
-        // Sanity check
-        if ((dataIn.getLength() - dataIn.getPosition()) < recordLength) {
-          throw new EOFException("Rec# " + recNo + ": Could read the next " +
-          		                   " record");
-        }
-      }
+    		// Sanity check
+    		if ((dataIn.getLength() - dataIn.getPosition()) < recordLength) {
+    			throw new EOFException("Rec# " + recNo + ": Could read the next record");
+    		}
+    	}
 
-      // Setup the key and value
-      pos = dataIn.getPosition();
-      byte[] data = dataIn.getData();
-      key.reset(data, pos, keyLength);
-      value.reset(data, (pos + keyLength), valueLength);
+    	// Setup the key and value
+    	pos = dataIn.getPosition();
+    	byte[] data = dataIn.getData();
+    	key.reset(data, pos, keyLength);
+    	value.reset(data, (pos + keyLength), valueLength);
       
-      // Position for the next record
-      long skipped = dataIn.skip(recordLength);
-      if (skipped != recordLength) {
-        throw new IOException("Rec# " + recNo + ": Failed to skip past record " +
-        		                  "of length: " + recordLength);
-      }
-      
-      // Record the bytes read
-      bytesRead += recordLength;
+    	// Position for the next record
+    	long skipped = dataIn.skip(recordLength);
+    	if (skipped != recordLength) {
+    		throw new IOException("Rec# " + recNo + ": Failed to skip past record of length: " + recordLength);
+    	}
+    	
+    	// Record the bytes read
+    	bytesRead += recordLength;
+    	
+    	++recNo;
+    	++numRecordsRead;
 
-      ++recNo;
-      ++numRecordsRead;
-
-      return true;
+    	return true;
     }
 
     public void close() throws IOException {
-      // Return the decompressor
-      if (decompressor != null) {
-        decompressor.reset();
-        CodecPool.returnDecompressor(decompressor);
-        decompressor = null;
-      }
+ 
+    	// Return the decompressor
+    	if (decompressor != null) {
+    		decompressor.reset();
+    		CodecPool.returnDecompressor(decompressor);
+    		decompressor = null;
+    	}
       
-      // Close the underlying stream
-      in.close();
+    	// Close the underlying stream
+    	in.close();
       
-      // Release the buffer
-      dataIn = null;
-      buffer = null;
-      if(readRecordsCounter != null) {
-        readRecordsCounter.increment(numRecordsRead);
-      }
+    	// Release the buffer
+    	dataIn = null;
+    	buffer = null;
+    	if(readRecordsCounter != null) {
+    		readRecordsCounter.increment(numRecordsRead);
+    	}
     }
   }    
   
