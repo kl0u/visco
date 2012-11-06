@@ -75,9 +75,7 @@ public class NetworkIOChannel<K extends WritableComparable<K>, V extends Writabl
 	 */
 	private K key;
 	
-	private K lastKey;
-	private boolean hasMoreValues = false;
-	private final RawComparator comparator;
+	private final RawComparator<K> comparator;
 	
 	/**
 	 * A value class
@@ -125,8 +123,7 @@ public class NetworkIOChannel<K extends WritableComparable<K>, V extends Writabl
 		this.valueDeserializer.open(this.vb);
 
 		this.item = new IOChannelBuffer<K, V>(100, this.jobConf);
-		
-		this.comparator = this.jobConf.getOutputValueGroupingComparator();
+		this.comparator = this.jobConf.getOutputKeyComparator();//.getOutputValueGroupingComparator();
 		
 		this.reader = new BinaryInputReader<K,V>(jobConf, codec, counter, inputLocation, jobTokenSecret, reduce);
 	}
@@ -152,18 +149,25 @@ public class NetworkIOChannel<K extends WritableComparable<K>, V extends Writabl
 		}
 		
 		try{
+			// have to change the structure here so that the values of the same key all go to the same buffer.
 			while (item.hasRemaining() && !(isFinished = reader.next(kb, vb))) {
 				key = null;
 				value  = null;
 								
 				key = this.keyDeserializer.deserialize(key);
-		//		this.hasMoreValues = (this.comparator.compare(key, this.lastKey) == 0);
-				
 				value = this.valueDeserializer.deserialize(value);
-			
-				ArrayList<V> values = new ArrayList<V>();
+
+				ArrayList<V> values = null;
+//				if (this.lastKey != null && this.comparator.compare(key, this.lastKey) == 0) {
+//					values = item.removeValues();
+//					item.removeKey();
+//				} else {
+					values = new ArrayList<V>();
+				//}				
 				values.add(value);
-				item.AddKeyValues(key, values);
+				item.AddKeyValues(key, values);	
+
+				this.lastKey = key;
 				
 				reporter.progress();
 			}
@@ -197,7 +201,12 @@ public class NetworkIOChannel<K extends WritableComparable<K>, V extends Writabl
 		return ((item.size() == 0) ? null : item);
 	}
 
-	int dupCounter = 0;
+	private K lastKey;
+		
+	private ArrayList<V> values;
+	
+//	private int dups;
+//	private int totalValues;
 	
 //	@Override
 //	public IOChannelBuffer<K, V> Receive(ModifiableBoolean result) {
@@ -207,28 +216,43 @@ public class NetworkIOChannel<K extends WritableComparable<K>, V extends Writabl
 //		}
 //		
 //		try{
-//			while (item.hasRemaining() && !(isFinished = reader.next(kb, vb))) {
+//			
+//			while (!(isFinished = reader.next(kb, vb))) {	
 //				key = null;
 //				value  = null;
 //								
 //				key = this.keyDeserializer.deserialize(key);
-//				if(this.lastKey != null && (this.comparator.compare(key, this.lastKey) == 0)) {
-//						dupCounter++;
-//				}
-//				this.lastKey = key;
-//				
 //				value = this.valueDeserializer.deserialize(value);
-//			
-//				ArrayList<V> values = new ArrayList<V>();
-//				values.add(value);
-//				item.AddKeyValues(key, values);
 //				
-//				reporter.progress();
-//			}
-//			
+//				boolean isEqualToPrevious = (this.lastKey == null) ? 
+//						false : (this.comparator.compare(key, this.lastKey) == 0);
+//				
+//				if((item.remaining() == 1) && this.lastKey != null && !isEqualToPrevious) {
+//					item.AddKeyValues(lastKey, values);	
+//	
+//					// be ready to put them in the next call.
+//					lastKey = key;
+//					values = new ArrayList<V>();
+//					values.add(value);
+//					break;
+//				}
+//
+//				if (isEqualToPrevious) {
+//					values.add(value);
+//				} else {
+//					if(lastKey != null)
+//						item.AddKeyValues(lastKey, values);
+//					lastKey = key;
+//					values = new ArrayList<V>();
+//					values.add(value);
+//				}
+//				reporter.progress();				
+//			} 
+//			// TODO fix the key to null for the case that there is one record remaining.
 //		} catch (EOFException eof) {
 //			try {
 //				// close the IFile.Reader instance
+//				item.AddKeyValues(lastKey, values);
 //				reader.close();
 //			} catch (IOException ioe) {
 //				ioe.printStackTrace(System.out);
@@ -242,8 +266,8 @@ public class NetworkIOChannel<K extends WritableComparable<K>, V extends Writabl
 //		
 //		try{
 //			if(isFinished) {
+//				item.AddKeyValues(lastKey, values);
 //				reader.close();
-//				System.out.println("INPUT DUPS : "+ this.dupCounter);
 //				result.value = true;
 //				reporter.progress();
 //				return ((item.size() == 0) ? null : item);
@@ -251,10 +275,11 @@ public class NetworkIOChannel<K extends WritableComparable<K>, V extends Writabl
 //		} catch (IOException ioe) {
 //			ioe.printStackTrace(System.out);
 //		}
-//			
+//		
 //		result.value = true;
 //		return ((item.size() == 0) ? null : item);
 //	}
+	
 	@Override
 	public void Release(IOChannelBuffer<K, V> item) {
 		this.item.clear();

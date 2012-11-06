@@ -1,7 +1,6 @@
 package visco.core.merge;
 
 import java.io.IOException;
-import java.lang.reflect.Constructor;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 
@@ -10,9 +9,6 @@ import org.apache.hadoop.io.WritableComparable;
 import org.apache.hadoop.io.WritableUtils;
 import org.apache.hadoop.mapred.JobConf;
 import org.apache.hadoop.mapred.OutputCollector;
-import org.apache.hadoop.mapreduce.RecordWriter;
-import org.apache.hadoop.mapreduce.TaskAttemptContext;
-import org.apache.hadoop.util.ReflectionUtils;
 
 /**
  * This is the list of key and values that we pass around during the stages
@@ -44,7 +40,7 @@ public class IOChannelBuffer<K extends WritableComparable<K>, V extends Writable
 	}
 
 	/**
-	 * Add the specifed key and values to the list.
+	 * Add the specified key and values to the list.
 	 * 
 	 * @param key
 	 * @param values
@@ -118,6 +114,10 @@ public class IOChannelBuffer<K extends WritableComparable<K>, V extends Writable
 		return this.keys.size() < this.capacity;
 	}
 
+	public int remaining() {
+		return this.capacity - this.keys.size();
+	}
+	
 	@Override
 	public void collect(K key, V value) throws IOException {
 	

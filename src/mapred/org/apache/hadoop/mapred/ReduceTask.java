@@ -231,14 +231,13 @@ public class ReduceTask extends Task {
 		return fileList.toArray(new Path[0]);
 	}
 
-	private class ReduceValuesIterator<KEY,VALUE> 
-	extends ValuesIterator<KEY,VALUE> {
+	private class ReduceValuesIterator<KEY,VALUE> extends ValuesIterator<KEY,VALUE> {
+	
 		public ReduceValuesIterator (RawKeyValueIterator in,
 				RawComparator<KEY> comparator, 
 				Class<KEY> keyClass,
 				Class<VALUE> valClass,
-				Configuration conf, Progressable reporter)
-		throws IOException {
+				Configuration conf, Progressable reporter) throws IOException {
 			super(in, comparator, keyClass, valClass, conf, reporter);
 		}
 
@@ -436,8 +435,7 @@ public class ReduceTask extends Task {
 					job.getMapOutputValueClass(), codec, getMapFiles(rfs, true),
 					!conf.getKeepFailedTaskFiles(), job.getInt("io.sort.factor", 100),
 					new Path(getTaskID().toString()), job.getOutputKeyComparator(),
-					reporter, spilledRecordsCounter, null)
-					: null; 
+					reporter, spilledRecordsCounter, null) : null; 
 
 			if (rIter != null) {
 				//TODO: delete this line  

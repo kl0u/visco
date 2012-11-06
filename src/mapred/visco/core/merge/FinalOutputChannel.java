@@ -6,6 +6,7 @@ import java.lang.reflect.InvocationTargetException;
 import java.util.ArrayList;
 
 import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.io.RawComparator;
 import org.apache.hadoop.io.Writable;
 import org.apache.hadoop.io.WritableComparable;
 import org.apache.hadoop.mapred.JobConf;
@@ -91,6 +92,7 @@ public class FinalOutputChannel<INKEY extends WritableComparable<INKEY>, INVALUE
 	 * */
 	private org.apache.hadoop.mapred.OutputCollector<OUTKEY, OUTVALUE> oldCollector;
 	
+	private RawComparator<INKEY> groupComparator;
 	
 	/**
 	 * The main constructor of the class.
@@ -109,6 +111,10 @@ public class FinalOutputChannel<INKEY extends WritableComparable<INKEY>, INVALUE
 		this.ioChannelBuffer = new IOChannelBuffer<INKEY, INVALUE>(100, this.jobConf);
 		this.reporter = reporter;
 		this.onMergeCompleted = onMergeCompleted;
+		
+		// this is for the secondary sort.
+		this.groupComparator = this.jobConf.getOutputValueGroupingComparator();
+		
 		try {
 			if(this.jobConf.getUseNewReducer()) {
 				this.taskContext = new TaskAttemptContext(jobConf, taskId);
@@ -123,12 +129,6 @@ public class FinalOutputChannel<INKEY extends WritableComparable<INKEY>, INVALUE
 				
 				this.oldTrackedRW = new OldTrackingRecordWriter<OUTKEY, OUTVALUE>(
 						(org.apache.hadoop.mapred.Counters.Counter) outputCounter, this.jobConf, this.reporter, finalName);
-				
-				// these are the classes for the output keys and values.
-				Class<OUTKEY> outK = (Class<OUTKEY>) jobConf.getOutputKeyClass();
-				Class<OUTVALUE> outV = (Class<OUTVALUE>) jobConf.getOutputValueClass();
-				
-				//System.out.println("Expecting class : "+ outK.getName());
 				
 				this.oldCollector = new OutputCollector<OUTKEY, OUTVALUE>() {
 
@@ -149,37 +149,34 @@ public class FinalOutputChannel<INKEY extends WritableComparable<INKEY>, INVALUE
 		return ioChannelBuffer;
 	}
 	
-	private int recordCounter = 0;
+	private INKEY groupKey;
+	private ArrayList<INVALUE> groupValues;
 	
 	public void Send(IOChannelBuffer<INKEY,INVALUE> item) {
 		
 		try {				
-			if(this.jobConf.getUseNewReducer()) {
-				while (item.size() > 0) {
+			while (item.size() > 0) {
+				INKEY key = item.removeKey();
+				ArrayList<INVALUE> values = item.removeValues();
 					
-					INKEY key = item.removeKey();
-					ArrayList<INVALUE> values = item.removeValues();
+				boolean areKeysEqual = (this.groupKey == null) ? false : 
+					(this.groupComparator.compare(key, this.groupKey) == 0);
 
-					this.newReducer.reduce(key, values, this.reducerContext); 
-					this.reporter.progress();	
+				if(areKeysEqual) {
+					this.groupValues.addAll(values);
+				} else {
+					if(this.groupKey != null)
+						this.runReducer(this.groupKey, this.groupValues); 
+					this.groupKey = key;
+					this.groupValues = values;
 				}
-			} else {
-				while (item.size() > 0) { 
-					
-					INKEY key = item.removeKey();
-					ArrayList<INVALUE> values = item.removeValues();
-					
-					this.recordCounter++;
-					this.oldReducer.reduce(key, values.iterator(), this.oldCollector, this.reporter); 
-					this.reporter.progress();
-				}
+				this.reporter.progress();	
 			}
 			item.clear(); // clear the buffer for the next iteration
 		} catch (Exception e) {
 			e.printStackTrace(System.out);
 		}
 	}
-
 
 	public IOChannelBuffer<INKEY,INVALUE> Receive(ModifiableBoolean result) {
 		throw new UnsupportedOperationException("This method should never be called");
@@ -191,29 +188,13 @@ public class FinalOutputChannel<INKEY extends WritableComparable<INKEY>, INVALUE
 
 	public void Close() {
 		try {
+			this.runReducer(groupKey, groupValues);
 			if(this.jobConf.getUseNewReducer()) {
-				while (this.ioChannelBuffer.size() > 0) {
-					INKEY key = this.ioChannelBuffer.removeKey();
-					ArrayList<INVALUE> values = this.ioChannelBuffer.removeValues();
-
-					this.newReducer.reduce(key, values, this.reducerContext); 
-					reporter.progress();
-				}
 				this.newTrackedRW.close(this.taskContext);
 			} else {
-				while (this.ioChannelBuffer.size() > 0) {
-					INKEY key = this.ioChannelBuffer.removeKey();
-					ArrayList<INVALUE> values = this.ioChannelBuffer.removeValues();
-
-					this.recordCounter++;
-					this.oldReducer.reduce(key, values.iterator(), this.oldCollector, this.reporter); 
-					this.reporter.progress();	
-				}
 				this.oldReducer.close();
 				this.oldTrackedRW.close(this.reporter);
-				
-				System.out.println("Wrote "+ this.recordCounter +" ones.");
-			}			
+			}
 			this.ioChannelBuffer.clear();
 			onMergeCompleted.action();
 		} catch (Exception e) {
@@ -221,6 +202,14 @@ public class FinalOutputChannel<INKEY extends WritableComparable<INKEY>, INVALUE
 		}
 	}
 
+	private final void runReducer(INKEY key, ArrayList<INVALUE> values) throws IOException, InterruptedException {
+		if(this.jobConf.getUseNewReducer()) {
+			this.newReducer.reduce(key, values, this.reducerContext); 
+		} else {
+			this.oldReducer.reduce(key, values.iterator(), this.oldCollector, this.reporter); 
+		}
+	}
+	
 	private static final Constructor<org.apache.hadoop.mapreduce.Reducer.Context> contextConstructor;
 	
 	static {

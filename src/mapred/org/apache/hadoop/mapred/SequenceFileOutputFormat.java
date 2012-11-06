@@ -36,8 +36,6 @@ import org.apache.hadoop.util.*;
  */
 public class SequenceFileOutputFormat <K,V> extends FileOutputFormat<K, V> {
 
-	private int counter = 0;
-	
 	public RecordWriter<K, V> getRecordWriter(FileSystem ignored, 
 			JobConf job, String name, Progressable progress) throws IOException {
 	  
@@ -63,12 +61,10 @@ public class SequenceFileOutputFormat <K,V> extends FileOutputFormat<K, V> {
 		return new RecordWriter<K, V>() {
 			
 			public void write(K key, V value) throws IOException {		
-				counter++;
 				out.append(key, value);
 			}
 
 			public void close(Reporter reporter) throws IOException { 
-				System.out.println("The writer saw "+ counter +" pairs.");
 				out.close(); 
 			}
 		};

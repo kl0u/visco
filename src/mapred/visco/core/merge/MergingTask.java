@@ -138,7 +138,7 @@ public class MergingTask <K extends WritableComparable<K>, V extends Writable> i
 		this.index = MergingTask.indexCounter++;
 		
 		this.jobConf = jobConf;
-		this.comparator = this.jobConf.getOutputValueGroupingComparator();
+		this.comparator = this.jobConf.getOutputKeyComparator();//.getOutputValueGroupingComparator();
 	}
 
 	/**
@@ -162,7 +162,7 @@ public class MergingTask <K extends WritableComparable<K>, V extends Writable> i
 		this.reporter = reporter;
 		
 		this.jobConf = jobConf;
-		this.comparator = this.jobConf.getOutputValueGroupingComparator();
+		this.comparator = this.jobConf.getOutputKeyComparator();//.getOutputValueGroupingComparator();
 		
 		this.combinerRunner = combiner;
 		
@@ -381,8 +381,9 @@ public class MergingTask <K extends WritableComparable<K>, V extends Writable> i
 				}
 
 				if(this.noOfRecordsIn != this.noOfRecordsOut)
-					System.out.println(this.index + " : missing records : "+ (this.noOfRecordsIn - this.noOfRecordsOut) +" " +
-							",out="+ this.noOfRecordsOut +".");
+					System.out.println(this.index + " : in_0-"+ this.zeroValuesRead +" in_1-"+ this.oneValuesRead +
+							"\tmissing output="+ (this.noOfRecordsIn - this.noOfRecordsOut) +
+							" sent output="+ this.noOfRecordsOut +".");
 				
 				txChannel.Close();
 
