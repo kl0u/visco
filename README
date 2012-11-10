@@ -142,3 +142,24 @@ Code comments and thing to remember.
  
 24-09-2012 : Almost fixed the BUG in the grep. Have to fix it completely. 
              Visco does not work with one Map. Fix it or bypass it.
+
+HERE I WAS WRITING TO ANOTHER README FILE.
+
+06-12-2012 : FIXED Visco to run CloudBurst. 
+             We are receiving too slow.
+             Check also the case of using the combiner. For now we are
+             receiving assuming that there is only one value associated
+             to each key and I do not know exaclty what happens in the 
+             case that we have more.
+
+             Have to re-write the network layer. The BinaryInputReader 
+             is part of the bottleneck.
+
+07-11-2012 : The network is too slow. 
+
+             I have to rewrite it. Starting from the Reduce side. 
+
+             In the map side, Hadoop uses Servlets, which are threads per
+             communication. So probably it is ok to stay with this for now.
+
+09-11-2012 : The heap size is in bin/hadoop and conf/hadoop-env.sh.

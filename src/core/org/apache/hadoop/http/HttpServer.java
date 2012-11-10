@@ -78,40 +78,37 @@ import com.sun.jersey.spi.container.servlet.ServletContainer;
  *   "/" -> the jsp server code from (src/webapps/<name>)
  */
 public class HttpServer implements FilterContainer {
-  public static final Log LOG = LogFactory.getLog(HttpServer.class);
 
-  static final String FILTER_INITIALIZER_PROPERTY
-      = "hadoop.http.filter.initializers";
+	public static final Log LOG = LogFactory.getLog(HttpServer.class);
 
-  // The ServletContext attribute where the daemon Configuration
-  // gets stored.
-  static final String CONF_CONTEXT_ATTRIBUTE = "hadoop.conf";
-  static final String ADMINS_ACL = "admins.acl";
+	static final String FILTER_INITIALIZER_PROPERTY = "hadoop.http.filter.initializers";
 
-  private AccessControlList adminsAcl;
+	// The ServletContext attribute where the daemon Configuration
+	// gets stored.
+	static final String CONF_CONTEXT_ATTRIBUTE = "hadoop.conf";
+	static final String ADMINS_ACL = "admins.acl";
 
-  protected final Server webServer;
-  protected final Connector listener;
-  protected final WebAppContext webAppContext;
-  protected final boolean findPort;
-  protected final Map<Context, Boolean> defaultContexts =
-      new HashMap<Context, Boolean>();
-  protected final List<String> filterNames = new ArrayList<String>();
-  private static final int MAX_RETRIES = 10;
-  private final Configuration conf;
+	private AccessControlList adminsAcl;
 
-  private boolean listenerStartedExternally = false;
+	protected final Server webServer;
+	protected final Connector listener;
+	protected final WebAppContext webAppContext;
+	protected final boolean findPort;
+	protected final Map<Context, Boolean> defaultContexts = new HashMap<Context, Boolean>();
+	protected final List<String> filterNames = new ArrayList<String>();
+	private static final int MAX_RETRIES = 10;
+	private final Configuration conf;
 
-  /** Same as this(name, bindAddress, port, findPort, null); */
-  public HttpServer(String name, String bindAddress, int port, boolean findPort
-      ) throws IOException {
-    this(name, bindAddress, port, findPort, new Configuration());
-  }
+	private boolean listenerStartedExternally = false;
 
-  public HttpServer(String name, String bindAddress, int port,
-      boolean findPort, Configuration conf) throws IOException {
-    this(name, bindAddress, port, findPort, conf, null, null);
-  }
+	/** Same as this(name, bindAddress, port, findPort, null); */
+	public HttpServer(String name, String bindAddress, int port, boolean findPort) throws IOException {
+		this(name, bindAddress, port, findPort, new Configuration());
+	}
+
+	public HttpServer(String name, String bindAddress, int port, boolean findPort, Configuration conf) throws IOException {
+		this(name, bindAddress, port, findPort, conf, null, null);
+	}
 
   public HttpServer(String name, String bindAddress, int port,
       boolean findPort, Configuration conf, Connector connector) throws IOException {

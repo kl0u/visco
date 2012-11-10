@@ -101,11 +101,6 @@ public class MergingTask <K extends WritableComparable<K>, V extends Writable> i
 	protected final Executor threadPool;
 
 	/**
-	 * The reporter for the job
-	 */
-	private Reporter reporter;
-
-	/**
 	 * We used a static int to keep track of how many tasks we generate.
 	 */
 	public static int indexCounter = 0;
@@ -117,10 +112,13 @@ public class MergingTask <K extends WritableComparable<K>, V extends Writable> i
 
 	private final JobConf jobConf;
 	
-	// TODO think if this should be instantiated in each class separately
+	// TODO This should be instantiated in each instance separately
 	private final CombinerRunner<K,V> combinerRunner;
 	
 	private final RawComparator comparator;
+	
+	/** The comparator for the secondary sort. */
+	private final RawComparator secondaryComparator;
 	
 	/**
 	 * Initializes an empty merger task. The channels must be initialized (using
@@ -131,14 +129,16 @@ public class MergingTask <K extends WritableComparable<K>, V extends Writable> i
 	 *            the thread pool used to execute this task
 	 * 
 	 */
-	MergingTask(JobConf jobConf, Executor threadPool, CombinerRunner combiner, Reporter reporter) {
+	MergingTask(JobConf jobConf, Executor threadPool, CombinerRunner combiner) {
 		this.threadPool = threadPool;
-		this.reporter = reporter;
 		this.combinerRunner = combiner;
 		this.index = MergingTask.indexCounter++;
 		
 		this.jobConf = jobConf;
-		this.comparator = this.jobConf.getOutputKeyComparator();//.getOutputValueGroupingComparator();
+		this.comparator = this.jobConf.getOutputKeyComparator();
+		this.secondaryComparator = this.jobConf.getOutputValueGroupingComparator();
+		
+		// this is true System.out.println(this.comparator == this.secondaryComparator);
 	}
 
 	/**
@@ -159,10 +159,11 @@ public class MergingTask <K extends WritableComparable<K>, V extends Writable> i
 		this.rxChannel_1 = rxChannel_1;
 		this.txChannel = txChannel;
 		this.threadPool = threadPool;
-		this.reporter = reporter;
+		//this.reporter = reporter;
 		
 		this.jobConf = jobConf;
-		this.comparator = this.jobConf.getOutputKeyComparator();//.getOutputValueGroupingComparator();
+		this.comparator = this.jobConf.getOutputKeyComparator();
+		this.secondaryComparator = this.jobConf.getOutputValueGroupingComparator();
 		
 		this.combinerRunner = combiner;
 		
@@ -301,7 +302,6 @@ public class MergingTask <K extends WritableComparable<K>, V extends Writable> i
 //							if(this.combinerRunner != null) // && values_0.size() >= 4) {
 //								this.runCombinerOnBuffer(this.txBuffer);
 							
-
 							this.noOfRecordsOut += txBuffer.size();
 							txChannel.Send(txBuffer);
 							
@@ -309,9 +309,6 @@ public class MergingTask <K extends WritableComparable<K>, V extends Writable> i
 							taskState |= State.BlockedOnTX;
 						}
 						taskIsRunning = false;
-
-						// indicate progress before we go to sleep
-						reporter.progress();
 						return;
 					}
 					// remove the block on rx 0
@@ -328,7 +325,7 @@ public class MergingTask <K extends WritableComparable<K>, V extends Writable> i
 							
 //							if(this.combinerRunner != null) // && values_0.size() >= 4) {
 //								this.runCombinerOnBuffer(this.txBuffer);
-//							
+							
 							this.noOfRecordsOut += txBuffer.size();
 							txChannel.Send(txBuffer);
 							
@@ -336,9 +333,6 @@ public class MergingTask <K extends WritableComparable<K>, V extends Writable> i
 							taskState |= State.BlockedOnTX;
 						}
 						taskIsRunning = false;
-
-						// indicate progress before we go to sleep
-						reporter.progress();
 						return;
 					}
 
@@ -351,9 +345,6 @@ public class MergingTask <K extends WritableComparable<K>, V extends Writable> i
 					txBuffer = txChannel.GetEmpty(result);
 				  	if (!result.value) {
 				  		taskIsRunning = false;
-				    		
-			    		// indicate progress before we go to sleep
-						reporter.progress();
 			    		return;
 			    	}
 			    	// clear the buffer
@@ -371,8 +362,10 @@ public class MergingTask <K extends WritableComparable<K>, V extends Writable> i
 				// send remaining buffer (if contains any data)
 				if (txBuffer != null && txBuffer.size() > 0) {
 					
-//					if(this.combinerRunner != null) // && values_0.size() >= 4) {
+//					if(this.combinerRunner != null ) {
+//						txBuffer.AddKeyValues(groupKey, groupValues);
 //						this.runCombinerOnBuffer(this.txBuffer);
+//					}
 					
 					this.noOfRecordsOut += txBuffer.size();
 					txChannel.Send(txBuffer);
@@ -386,9 +379,6 @@ public class MergingTask <K extends WritableComparable<K>, V extends Writable> i
 							" sent output="+ this.noOfRecordsOut +".");
 				
 				txChannel.Close();
-
-				// indicate progress before we go to sleep
-				reporter.progress();
 				return;
 			}
 
@@ -487,7 +477,6 @@ public class MergingTask <K extends WritableComparable<K>, V extends Writable> i
 					// TX buffer reached maximum capacity
 					taskState |= State.BlockedOnTX;
 				}
-				reporter.progress(); // indicate we are making progress
 			}
 
 			// if the buffers have been consumed, release them
@@ -513,20 +502,33 @@ public class MergingTask <K extends WritableComparable<K>, V extends Writable> i
 		}
 	}
 	
+	private K groupKey;
+	private ArrayList<V> groupValues;
+	
 	/**
 	 * Runs the combiner on a full buffer and the output is put back in the buffer.
 	 * @param buffer the buffer to apply the combiner on.
 	 * */
 	private final void runCombinerOnBuffer(IOChannelBuffer<K, V> buffer) {
-		for(int i = 0; i < buffer.size(); i++) {
+		int initSize = buffer.size();
+		for(int i = 0; i < initSize; i++) {
 			K key = buffer.removeKey();
 			ArrayList<V> values = buffer.removeValues();
 			
-			if(values.size() == 1) {
-				buffer.AddKeyValues(key, values);
-				continue;
+			boolean areKeysEqual = (this.groupKey == null) ? false : 
+				(this.secondaryComparator.compare(key, this.groupKey) == 0);
+
+			if(areKeysEqual) {
+				this.groupValues.addAll(values);
+			} else {
+				if(this.groupKey != null)
+					if(this.groupValues.size() == 1)
+						buffer.AddKeyValues(groupKey, groupValues);
+					else
+						this.runCombiner(this.groupKey, this.groupValues, buffer); 
+				this.groupKey = key;
+				this.groupValues = values;
 			}
-			this.runCombiner(key, values, buffer);
 		}
 	}
 	

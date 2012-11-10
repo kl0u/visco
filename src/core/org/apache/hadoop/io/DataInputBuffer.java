@@ -53,9 +53,21 @@ public class DataInputBuffer extends DataInputStream {
 			this.pos = start;
 		}
 
-		public byte[] getData() { return buf; }
-		public int getPosition() { return pos; }
-		public int getLength() { return count; }
+		public byte[] getData() { 
+			return buf; 
+		}
+		
+		public int getPosition() { 
+			return pos; 	
+		}
+		
+		public int getLength() { 
+			return count; 
+		}
+		
+		public int getRemaining() { 
+			return (this.count - this.pos);
+		}
 	}
 
 	private Buffer buffer;
@@ -92,5 +104,10 @@ public class DataInputBuffer extends DataInputStream {
 	/** Returns the length of the input. */
 	public int getLength() { 
 		return buffer.getLength();	
+	}
+	
+	/** Returns the remaining input. */
+	public int getRemaining() {
+		return this.buffer.getRemaining();
 	}
 }

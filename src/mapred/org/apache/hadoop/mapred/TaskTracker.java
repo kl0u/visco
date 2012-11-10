@@ -3940,51 +3940,49 @@ public class TaskTracker implements MRConstants, TaskUmbilicalProtocol, Runnable
 		  }
 		  return false;
 	  }
-
-
-    /**
-     * verify that request has correct HASH for the url
-     * and also add a field to reply header with hash of the HASH
-     * @param request
-     * @param response
-     * @param jt the job token
-     * @throws IOException
-     */
-    private void verifyRequest(HttpServletRequest request, 
-        HttpServletResponse response, TaskTracker tracker, String jobId) 
-    throws IOException {
-      SecretKey tokenSecret = tracker.getJobTokenSecretManager()
-          .retrieveTokenSecret(jobId);
-      // string to encrypt
-      String enc_str = SecureShuffleUtils.buildMsgFrom(request);
+	  
+	  /**
+	   * verify that request has correct HASH for the url
+	   * and also add a field to reply header with hash of the HASH
+	   * @param request
+	   * @param response
+	   * @param jt the job token
+	   * @throws IOException
+	   */
+	  private void verifyRequest(HttpServletRequest request, HttpServletResponse response, 
+			  TaskTracker tracker, String jobId) throws IOException {
       
-      // hash from the fetcher
-      String urlHashStr = request.getHeader(SecureShuffleUtils.HTTP_HEADER_URL_HASH);
-      if(urlHashStr == null) {
-        response.sendError(HttpServletResponse.SC_UNAUTHORIZED);
-        throw new IOException("fetcher cannot be authenticated " + 
-            request.getRemoteHost());
-      }
-      int len = urlHashStr.length();
-      LOG.debug("verifying request. enc_str="+enc_str+"; hash=..."+
-          urlHashStr.substring(len-len/2, len-1)); // half of the hash for debug
+		  SecretKey tokenSecret = tracker.getJobTokenSecretManager().retrieveTokenSecret(jobId);
 
-      // verify - throws exception
-      try {
-        SecureShuffleUtils.verifyReply(urlHashStr, enc_str, tokenSecret);
-      } catch (IOException ioe) {
-        response.sendError(HttpServletResponse.SC_UNAUTHORIZED);
-        throw ioe;
-      }
+		  // string to encrypt
+		  String enc_str = SecureShuffleUtils.buildMsgFrom(request);
       
-      // verification passed - encode the reply
-      String reply = SecureShuffleUtils.generateHash(urlHashStr.getBytes(), tokenSecret);
-      response.addHeader(SecureShuffleUtils.HTTP_HEADER_REPLY_URL_HASH, reply);
+		  // hash from the fetcher
+		  String urlHashStr = request.getHeader(SecureShuffleUtils.HTTP_HEADER_URL_HASH);
+		  if(urlHashStr == null) {
+			  response.sendError(HttpServletResponse.SC_UNAUTHORIZED);
+			  throw new IOException("fetcher cannot be authenticated "+ request.getRemoteHost());
+		  }
+    
+		  int len = urlHashStr.length();
+		  LOG.debug("verifying request. enc_str="+enc_str+"; hash=..."+
+				  urlHashStr.substring(len-len/2, len-1)); // half of the hash for debug
+
+		  // verify - throws exception
+		  try {
+			  SecureShuffleUtils.verifyReply(urlHashStr, enc_str, tokenSecret);
+		  } catch (IOException ioe) {
+			  response.sendError(HttpServletResponse.SC_UNAUTHORIZED);
+			  throw ioe;
+		  }
       
-      len = reply.length();
-      LOG.debug("Fetcher request verfied. enc_str="+enc_str+";reply="
-          +reply.substring(len-len/2, len-1));
-    }
+		  // verification passed - encode the reply
+		  String reply = SecureShuffleUtils.generateHash(urlHashStr.getBytes(), tokenSecret);
+		  response.addHeader(SecureShuffleUtils.HTTP_HEADER_REPLY_URL_HASH, reply);
+      
+		  len = reply.length();
+		  LOG.debug("Fetcher request verfied. enc_str="+ enc_str +";reply="+ reply.substring(len-len/2, len-1));
+	  }
   }
   
 

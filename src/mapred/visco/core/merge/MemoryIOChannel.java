@@ -97,11 +97,6 @@ implements IOChannel<IOChannelBuffer<K,V>> {
 			//assert item != null;
 			return item;
 		} else if (this.isClosed) {
-
-
-			if(tx.Count() != 0)
-				System.out.println(this.tx.Count());
-			
 			/*
 			 * we don't have any more elements to return but this channel has
 			 * been closed. So we should return null but set the result value to
@@ -129,19 +124,4 @@ implements IOChannel<IOChannelBuffer<K,V>> {
 		// wake-up the consumer
 		consumerUnblocked.action();
 	}
-
-//	public boolean getIsClosed() {
-//		return isClosed;
-//	}
-
-//	// for the purpose of testing, since RX is private
-//	public void setRXDequeue(ModifiableBoolean MB) {
-//		rx.Dequeue(MB);
-//	}
-//
-//	// for the purpose of testing, since RX is private
-//	public void setTXEnqueue(IOChannelBuffer<K, V> item) {
-//		tx.Enqueue(item);
-//	}
-
 }

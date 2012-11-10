@@ -101,16 +101,9 @@ public class MergingTree <K extends WritableComparable<K>, V extends Writable> {
 			// create the channel to the final reduce phase for the root node
 			IOChannel txChannel = new FinalOutputChannel(jobConf, reporter, reduceInputKeyCounter, 
 					reduceInputValueCounter, reduceOutputCounter, taskId, finalName, onMergeCompleted);//null;
-//			if(jobConf.getUseNewReducer()) {
-//				txChannel = new NewFinalOutputChannel(jobConf, reporter, reduceInputKeyCounter, 
-//						reduceInputValueCounter, reduceOutputCounter, taskId, onMergeCompleted);
-//			} else { 
-//				txChannel = new OldFinalOutputChannel(jobConf, reporter, finalName, 
-//						(org.apache.hadoop.mapred.Counters.Counter) reduceOutputCounter, onMergeCompleted);
-//			}
 		
 			// create the root merge task
-			MergingTask rootTask = new MergingTask(jobConf, threadPool, null, reporter);// TODO here it was combiner the null
+			MergingTask rootTask = new MergingTask(jobConf, threadPool, null);// TODO here it was combiner the null
 			rootTask.SetTXChannel(txChannel);
 			
 			// build the rest of tree recursively
@@ -147,17 +140,18 @@ public class MergingTree <K extends WritableComparable<K>, V extends Writable> {
 
 		if (end - start == 2) {
 			parent.SetRXChannels(leaves[start], leaves[start + 1]);
+//			MergingTree.unblockRXChannel(parent, ChildType.LEFT_CHILD);
+//			MergingTree.unblockRXChannel(parent, ChildType.RIGHT_CHILD);
 			MergingTree.tasks_for_both.add(parent);
 			return;
 		}
 		
-
 		int split = ((end - start) / 2) + start;
 
 		IOChannel<IOChannelBuffer> leftChannel, rightChannel;
 		if (split - start >= 2) {
 			// create the left task and connect to the current task using a memory io channel
-			MergingTask leftChild = new MergingTask(conf, parent.threadPool, combiner, reporter);
+			MergingTask leftChild = new MergingTask(conf, parent.threadPool, combiner);
 			
 			leftChannel = MergingTree.createMemoryChannel(leftChild, parent,
 					ChildType.LEFT_CHILD, conf, taskId, reporter);
@@ -167,13 +161,14 @@ public class MergingTree <K extends WritableComparable<K>, V extends Writable> {
 		} else {
 			// there is only one leaf => connect the current node to it
 			leftChannel = leaves[start];
+			//MergingTree.unblockRXChannel(parent, ChildType.LEFT_CHILD);
 			MergingTree.tasks_left.add(parent);
 		}
 
 		// do the same for the right channel
 		if (end - split >= 2) {
 			// create the right task and connect to the current task using a memory io channel
-			MergingTask rightChild = new MergingTask(conf, parent.threadPool, combiner, reporter);
+			MergingTask rightChild = new MergingTask(conf, parent.threadPool, combiner);
 			
 			rightChannel = MergingTree.createMemoryChannel(rightChild, parent,
 					ChildType.RIGHT_CHILD, conf, taskId, reporter);
@@ -183,6 +178,7 @@ public class MergingTree <K extends WritableComparable<K>, V extends Writable> {
 		} else {
 			// there is only one leaf => connect the current node to it
 			rightChannel = leaves[split];
+			//MergingTree.unblockRXChannel(parent, ChildType.RIGHT_CHILD);
 			MergingTree.tasks_right.add(parent);
 		}
 
@@ -194,7 +190,7 @@ public class MergingTree <K extends WritableComparable<K>, V extends Writable> {
 	private static List<MergingTask> tasks_left = new ArrayList<MergingTask>();
 	private static List<MergingTask> tasks_right = new ArrayList<MergingTask>();
 	
-	// TODO THIS IS SLOWER THAN BEFORE AND DOES NOT CORRECT THE ERROR ON THE RESULTS.
+	// have to find another way so that channels can start imediately
 	private static void unblockTasks() {
 		for(MergingTask task : MergingTree.tasks_for_both) {
 			MergingTree.unblockRXChannel(task, ChildType.LEFT_CHILD);
@@ -225,12 +221,12 @@ public class MergingTree <K extends WritableComparable<K>, V extends Writable> {
 	private static MemoryIOChannel createMemoryChannel(final MergingTask child, final MergingTask parent,
 			final ChildType childType, final JobConf conf, TaskAttemptID taskId, Reporter reporter) {
 		
-		return new MemoryIOChannel(conf, taskId, 100,
+		return new MemoryIOChannel(conf, taskId, 20,
 				new FuncDelegate<IOChannelBuffer>() {    
 		
 			@Override
 			public IOChannelBuffer Func() {
-				return new IOChannelBuffer(1000, conf);
+				return new IOChannelBuffer(200, conf);
 			}
 
 		}, new ActionDelegate() {
@@ -307,7 +303,7 @@ public class MergingTree <K extends WritableComparable<K>, V extends Writable> {
 //						reporter, finalName, (org.apache.hadoop.mapred.Counters.Counter) reduceOutputCounter, onMergeCompleted);
 //			}
 			// create the root merge task
-			MergingTask rootTask = new MergingTask(jobConf, threadPool, null, reporter);
+			MergingTask rootTask = new MergingTask(jobConf, threadPool, null);
 			rootTask.SetTXChannel(txChannel);
 
 			// build the rest of tree recursively
@@ -352,7 +348,7 @@ public class MergingTree <K extends WritableComparable<K>, V extends Writable> {
 		if (split - start >= 2) {
 			// create the left task and connect to the current task using a
 			// memory io channel
-			MergingTask leftChild = new MergingTask(conf, parent.threadPool, combiner, reporter);
+			MergingTask leftChild = new MergingTask(conf, parent.threadPool, combiner);
 			leftChannel = MergingTree.createMemoryChannel(leftChild, parent,
 					ChildType.LEFT_CHILD, conf, taskId, reporter);
 			leftChild.SetTXChannel(leftChannel);
@@ -369,7 +365,7 @@ public class MergingTree <K extends WritableComparable<K>, V extends Writable> {
 		if (end - split >= 2) {
 			// create the right task and connect to the current task using a
 			// memory io channel
-			MergingTask rightChild = new MergingTask(conf, parent.threadPool, combiner, reporter);
+			MergingTask rightChild = new MergingTask(conf, parent.threadPool, combiner);
 			rightChannel = MergingTree.createMemoryChannel(rightChild, parent,
 					ChildType.RIGHT_CHILD, conf, taskId, reporter);
 

@@ -28,82 +28,76 @@ public class BinaryInputReader<K, V> {
 	private static final int EOF_MARKER = -1;  
 
 	private static final int DEFAULT_BUFFER_SIZE = 128*1024;
+	
 	private static final int MAX_VINT_SIZE = 9;
 
-	/**
-	 * The custom http header used for the map output length.
-	 */
+	/** The custom http header used for the map output length. */
 	public static final String MAP_OUTPUT_LENGTH = "Map-Output-Length";
 
-	/**
-	 * The custom http header used for the "raw" map output length.
-	 */
+	/** The custom http header used for the "raw" map output length. */
 	public static final String RAW_MAP_OUTPUT_LENGTH = "Raw-Map-Output-Length";
 
-	/**
-	 * The map task from which the map output data is being transferred
-	 */
+	/** The map task from which the map output data is being transferred. */
 	public static final String FROM_MAP_TASK = "from-map-task";
 
-	/**
-	 * The reduce task number for which this map output is being transferred
-	 */
+	/** The reduce task number for which this map output is being transferred. */
 	public static final String FOR_REDUCE_TASK = "for-reduce-task";
 
-
-	// basic/unit connection timeout (in milliseconds)
+	/** basic/unit connection timeout (in milliseconds). */
 	private final static int UNIT_CONNECT_TIMEOUT = 30 * 1000;
 
 	/** Number of ms before timing out a copy */
 	private static final int STALLED_COPY_TIMEOUT = 3 * 60 * 1000;
 
-	// default read timeout (in milliseconds)
+	/** default read timeout (in milliseconds) */
 	private final static int DEFAULT_READ_TIMEOUT = 3 * 60 * 1000;
 	
 	private static final Log LOG = LogFactory.getLog(ReduceTask.class.getName());
 
-
-	// Count records read from disk
-	private long numRecordsRead = 0;
+	private final Configuration conf;
+	
 	private final Counters.Counter readRecordsCounter;
 
-	final InputStream in;        // Possibly decompressed stream that we read
+	private final InputStream in;        // Possibly decompressed stream that we read
 	
-	Decompressor decompressor;
+	private Decompressor decompressor;
 	
-	long bytesRead = 0;
+	private boolean eof = false;
 	
-	final long fileLength;
-	
-	boolean eof = false;
-	
-	final IFileInputStream checksumIn;
+ 	private final IFileInputStream checksumIn;
 
-	Configuration conf = null;
+	private final long fileLength;
+	
+	private byte[] buffer = null;
+	
+	private int bufferSize = DEFAULT_BUFFER_SIZE;
+	
+	/** a buffer to receive data. */
+	private DataInputBuffer dataIn = new DataInputBuffer(); 
 
-	byte[] buffer = null;
-	
-	int bufferSize = DEFAULT_BUFFER_SIZE;
-	
-	DataInputBuffer dataIn = new DataInputBuffer(); // a buffer to receive data.
+	private final MapOutputLocation loc;
 
-	MapOutputLocation loc = null;
-
-	SecretKey jobTokenSecret = null;
+	private int reduceId;
 	
-	URLConnection connection;
+	private final SecretKey jobTokenSecret;
 	
-	InputStream input;
+	private URLConnection connection;
 	
-	long length;
-
+	private InputStream input;
+	
 	private int shuffleConnectionTimeout;
 	
 	private int shuffleReadTimeout;
 
-	int recNo = 1;
+	/** Count records read. */
+	private long numRecordsRead = 0;
 
-	private int reduce;
+	private int recNo = 1;
+
+	/** Count bytes received. These are the bytes translated into records. */
+	private long bytesRead = 0;
+
+	private long startTime = -1;
 	
 	/**
 	 * Constructs a BinaryInputReader
@@ -130,18 +124,18 @@ public class BinaryInputReader<K, V> {
 			bufferSize = conf.getInt("io.file.buffer.size", DEFAULT_BUFFER_SIZE);
 		}
 	
-		this.reduce = reduce;
+		this.reduceId = reduce;
 		
 		//get InputStream for reading data
 		this.input = getURLInputStream(loc);
-		this.length = getMapOutputLength();
-		if(this.length == -1) {
-			throw new IOException("Failed to fetch map-output for "+ 
-					loc.getTaskAttemptId() +" from "+ loc.getHost());
+		this.fileLength = getMapOutputLength(); // this.length
+
+		if(this.fileLength == -1) {// this.length
+			throw new IOException("Failed to fetch map-output for "+ loc.getTaskAttemptId() +" from "+ loc.getHost());
 		}
 	
-		this.fileLength = this.length;
-		checksumIn = new IFileInputStream(this.input,this.length);
+//		this.fileLength = this.length;
+		checksumIn = new IFileInputStream(this.input,this.fileLength); // this.length
 		
 		//check if we use compression or not
 		if (codec != null) {
@@ -151,7 +145,7 @@ public class BinaryInputReader<K, V> {
 			this.in = this.input;
 		}
 	}
-
+	
 	/**
 	 * Returns an InputStream. What happens if the stream is on local disk ?
 	 * 
@@ -283,7 +277,7 @@ public class BinaryInputReader<K, V> {
 		
 		//check if we are getting data for this reduce task  
 		int forReduce = (int)Integer.parseInt(connection.getHeaderField(FOR_REDUCE_TASK));
-		if (forReduce != reduce) {
+		if (forReduce != reduceId) {
 			LOG.warn("data for the wrong reduce: " + forReduce +" with compressed len: " + compressedLength );
 			return -1;
 		}
@@ -307,6 +301,7 @@ public class BinaryInputReader<K, V> {
 	
 	/**
 	 * Read up to len bytes into buf starting at offset off.
+	 * This is a <b>blocking</b> method.
 	 * 
 	 * @param buf buffer 
 	 * @param off offset
@@ -337,19 +332,23 @@ public class BinaryInputReader<K, V> {
 		bufferSize = buffer.length;
 	}
 
+	int rejigCounter = 0;
+	
 	/**
 	 * The way it is used up to now, what it does is write the remaining bytes at the beginning of the buffer and
 	 * fill the remaining positions with new data. It is like bytebuffer.compact().
 	 * */
-	private byte[] rejigData(byte[] source, byte[] destination) throws IOException{
+	private byte[] rejigData(byte[] source, byte[] destination) throws IOException {
 		// Copy remaining data into the destination array
-		int bytesRemaining = dataIn.getLength() - dataIn.getPosition();
+		int bytesRemaining = dataIn.getRemaining(); //dataIn.getLength() - dataIn.getPosition();
 		if (bytesRemaining > 0) {
 			System.arraycopy(source, dataIn.getPosition(), destination, 0, bytesRemaining);
 		}
 
 		// Read as much data as will fit from the underlying stream 
 		int n = readData(destination, bytesRemaining, (destination.length - bytesRemaining));
+
+		this.rejigCounter++;
 		
 		dataIn.reset(destination, 0, (bytesRemaining + n));
 		return destination;
@@ -362,6 +361,12 @@ public class BinaryInputReader<K, V> {
 	 * @return <code>true</code> if EOF is reached, <code>false</code> otherwise.
 	 * */
 	public boolean next(DataInputBuffer key, DataInputBuffer value) throws IOException {
+		
+		// start counting the time it takes to read the map output from the network.
+		if(this.startTime == -1)
+			this.startTime = System.currentTimeMillis();
+
+		
 		// Sanity check
 		if (eof) {
 			throw new EOFException("Completed reading " + bytesRead);
@@ -370,9 +375,6 @@ public class BinaryInputReader<K, V> {
 		// TODO KOSTAS : here we assume that there is only one value associated with each key. Is this correct? 
 
 		// Check if we have enough data to read lengths. 
-		
-		// TODO yes but if we have not, we just keep reading the lengths.
-		// either remove the check or add an else.
 		if ((dataIn.getLength() - dataIn.getPosition()) < 2*MAX_VINT_SIZE) {
 			readNextBlock(2*MAX_VINT_SIZE);
 		}
@@ -438,9 +440,15 @@ public class BinaryInputReader<K, V> {
 		// Close the underlying stream
 		in.close();
 
+		double elapsedTime = (System.currentTimeMillis() - this.startTime) / 1000.0;
+		
+		System.out.println("Receiving "+ (this.bytesRead / (1000.0 * 1000.0)) +" MBs at "+
+				((this.bytesRead * 8.0) / (1000.0 * 1000.0 * elapsedTime))  +" Mbps. " +
+				this.rejigCounter +" times rejiged.");
+		
 		if(LOG.isDebugEnabled())
-			LOG.debug(this.reduce + " : Read "+ this.bytesRead 
-					+" out of "+ this.length +" bytes, or "+ this.numRecordsRead +" records.");
+			LOG.debug(this.reduceId + " : Read "+ this.bytesRead 
+					+" out of "+ this.fileLength +" bytes, or "+ this.numRecordsRead +" records.");
 		
 		// Release the buffer
 		dataIn = null;

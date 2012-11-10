@@ -19,6 +19,7 @@ import org.apache.hadoop.mapred.ReduceTask.ReduceCopier.MapOutputLocation;
 import org.apache.hadoop.mapred.Reporter;
 
 import visco.core.io.BinaryInputReader;
+import visco.util.ActionDelegate;
 import visco.util.ModifiableBoolean;
 
 
@@ -89,6 +90,10 @@ public class NetworkIOChannel<K extends WritableComparable<K>, V extends Writabl
 
 	private static final Class<?>[] EMPTY_ARRAY = new Class[]{};
 
+	private static int idx;
+	
+	private final int index;
+	
 	/**
 	 * Construct a NetworkIOChannel
 	 * 
@@ -126,6 +131,7 @@ public class NetworkIOChannel<K extends WritableComparable<K>, V extends Writabl
 		this.comparator = this.jobConf.getOutputKeyComparator();//.getOutputValueGroupingComparator();
 		
 		this.reader = new BinaryInputReader<K,V>(jobConf, codec, counter, inputLocation, jobTokenSecret, reduce);
+		this.index = idx++;
 	}
 	
 	@Override
@@ -138,11 +144,17 @@ public class NetworkIOChannel<K extends WritableComparable<K>, V extends Writabl
 		throw new UnsupportedOperationException("This method should never be called");
 	}
 
+	private boolean hasStarted = false;
 	private boolean isFinished = false;
 	
 	
 	@Override
 	public IOChannelBuffer<K, V> Receive(ModifiableBoolean result) {
+//		if(!hasStarted) {
+//			this.hasStarted = true;
+//			System.out.println(this.index +" : started.");
+//		}
+		
 		if(isFinished) {
 			result.value = true;
 			return ((item.size() == 0) ? null : item);
@@ -165,6 +177,7 @@ public class NetworkIOChannel<K extends WritableComparable<K>, V extends Writabl
 					values = new ArrayList<V>();
 				//}				
 				values.add(value);
+			// TODO for BW checking
 				item.AddKeyValues(key, values);	
 
 				this.lastKey = key;

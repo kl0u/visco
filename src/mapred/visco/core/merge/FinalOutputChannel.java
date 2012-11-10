@@ -92,6 +92,7 @@ public class FinalOutputChannel<INKEY extends WritableComparable<INKEY>, INVALUE
 	 * */
 	private org.apache.hadoop.mapred.OutputCollector<OUTKEY, OUTVALUE> oldCollector;
 	
+	private RawComparator<INKEY> mapKeyComparator;
 	private RawComparator<INKEY> groupComparator;
 	
 	/**
@@ -112,8 +113,13 @@ public class FinalOutputChannel<INKEY extends WritableComparable<INKEY>, INVALUE
 		this.reporter = reporter;
 		this.onMergeCompleted = onMergeCompleted;
 		
+		// this is for the original sort
+		this.mapKeyComparator = this.jobConf.getOutputKeyComparator();
+
 		// this is for the secondary sort.
 		this.groupComparator = this.jobConf.getOutputValueGroupingComparator();
+		if(this.groupComparator == this.mapKeyComparator)
+			this.groupComparator = null;
 		
 		try {
 			if(this.jobConf.getUseNewReducer()) {
@@ -154,25 +160,32 @@ public class FinalOutputChannel<INKEY extends WritableComparable<INKEY>, INVALUE
 	
 	public void Send(IOChannelBuffer<INKEY,INVALUE> item) {
 		
-		try {				
-			while (item.size() > 0) {
-				INKEY key = item.removeKey();
-				ArrayList<INVALUE> values = item.removeValues();
-					
-				boolean areKeysEqual = (this.groupKey == null) ? false : 
-					(this.groupComparator.compare(key, this.groupKey) == 0);
-
-				if(areKeysEqual) {
-					this.groupValues.addAll(values);
+		try {					
+			if(this.groupComparator == null) {
+					while (item.size() > 0) {
+						INKEY key = item.removeKey();
+						ArrayList<INVALUE> values = item.removeValues();
+						this.runReducer(key, values);
+					}
 				} else {
-					if(this.groupKey != null)
-						this.runReducer(this.groupKey, this.groupValues); 
-					this.groupKey = key;
-					this.groupValues = values;
+					while (item.size() > 0) {
+						INKEY key = item.removeKey();
+						ArrayList<INVALUE> values = item.removeValues();
+						boolean areKeysEqual = (this.groupKey == null) ? false : 
+							(this.groupComparator.compare(key, this.groupKey) == 0);
+
+						if(areKeysEqual) {
+							this.groupValues.addAll(values);
+						} else {
+							if(this.groupKey != null)
+								this.runReducer(this.groupKey, this.groupValues); 
+							this.groupKey = key;
+							this.groupValues = values;
+						}
+					}
 				}
 				this.reporter.progress();	
-			}
-			item.clear(); // clear the buffer for the next iteration
+				item.clear(); // clear the buffer for the next iteration
 		} catch (Exception e) {
 			e.printStackTrace(System.out);
 		}
@@ -188,7 +201,10 @@ public class FinalOutputChannel<INKEY extends WritableComparable<INKEY>, INVALUE
 
 	public void Close() {
 		try {
-			this.runReducer(groupKey, groupValues);
+			// in the case that we have secondary sort...
+			if(this.groupComparator != null) 
+				this.runReducer(groupKey, groupValues);
+		
 			if(this.jobConf.getUseNewReducer()) {
 				this.newTrackedRW.close(this.taskContext);
 			} else {

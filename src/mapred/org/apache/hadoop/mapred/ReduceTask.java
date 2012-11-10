@@ -399,7 +399,8 @@ public class ReduceTask extends Task {
 						
 			//final TaskReporter tmpReporter = reporter;	  // a temp reporter for the action delegate
 			
-			Executor threadPool = Executors.newCachedThreadPool();		
+			//Executor threadPool = Executors.newCachedThreadPool();		
+			Executor threadPool = Executors.newFixedThreadPool(2 * Runtime.getRuntime().availableProcessors());		
 			
 			Counters.Counter combineInputCounter = reporter.getCounter(Task.Counter.COMBINE_INPUT_RECORDS);
 			CombinerRunner combinerRunner = CombinerRunner.create(conf, getTaskID(), combineInputCounter, reporter, null);
